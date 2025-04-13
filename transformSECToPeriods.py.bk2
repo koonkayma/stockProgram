@@ -1,0 +1,289 @@
+import requests
+import pandas as pd
+import time
+import logging
+import mysql.connector
+from mysql.connector import Error, IntegrityError
+from typing import List, Optional, Tuple, Dict, Any, Set
+import os
+import json
+from decimal import Decimal, InvalidOperation
+import argparse
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed # For potential parallelization
+
+
+# --- Configuration ---
+SOURCE_TABLE = "sec_numeric_data"
+TARGET_TABLE = "company_financial_periods"
+SOURCE_API_NAME_META = "SEC_XBRL_Processed" # Identifier for this derived data
+
+# How many CIKs to process in one go from source table
+CIK_BATCH_SIZE = 100
+# How many rows (company-periods) to insert/update in DB at once
+INSERT_BATCH_SIZE = 1000
+
+# --- Tag Mapping Configuration ---
+# Map target table column names to potential SEC XBRL tags
+TAG_MAP = {
+    'revenue': ['Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet'],
+    'cost_of_revenue': ['CostOfRevenue', 'CostOfGoodsAndServicesSold'],
+    'gross_profit': ['GrossProfit'],
+    'operating_income_loss': ['OperatingIncomeLoss'],
+    'interest_expense': ['InterestExpense'],
+    'income_loss_before_tax': ['IncomeLossBeforeTax'], # Corrected potential typo
+    'net_income_loss': ['NetIncomeLoss', 'ProfitLoss'],
+    'depreciation_amortization': ['DepreciationAndAmortization', 'DepreciationDepletionAndAmortization'],
+    'ebitda': ['EBITDA'],
+    'eps_basic': ['EarningsPerShareBasic'],
+    'eps_diluted': ['EarningsPerShareDiluted'],
+    'assets': ['Assets'],
+    'current_assets': ['AssetsCurrent'],
+    'liabilities': ['Liabilities'],
+    'current_liabilities': ['LiabilitiesCurrent'],
+    'accounts_payable_current': ['AccountsPayableCurrent'],
+    'total_debt': ['DebtInstrumentPrincipalOutstanding', 'DebtInstrumentFaceAmount', 'LongTermDebtAndCapitalLeaseObligations', 'DebtAndCapitalLeaseObligations'], # Needs careful selection/summation logic in transform if not direct
+    'total_equity': ['StockholdersEquity', 'EquityAttributableToParent', 'LiabilitiesAndStockholdersEquity'], # LiabilitiesAndStockholdersEquity is Total L+E
+    'cash_and_cash_equivalents': ['CashAndCashEquivalentsAtCarryingValue'],
+    'net_cash_ops': ['NetCashProvidedByUsedInOperatingActivities', 'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'],
+    'net_cash_investing': ['NetCashProvidedByUsedInInvestingActivities'],
+    'net_cash_financing': ['NetCashProvidedByUsedInFinancingActivities'],
+    'capex': ['PaymentsToAcquirePropertyPlantAndEquipment', 'PurchaseOfPropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'],
+    'dividends_paid': ['PaymentsOfDividends', 'DividendsPaid', 'PaymentsRelatedToTreasuryStockDividendsInArrearsAndPaymentOfRedeemableStock'], # Usually negative
+}
+CALCULATE_FCF_AS_CFO_MINUS_CAPEX = True
+
+# --- Database Configuration ---
+DB_HOST = os.environ.get("DB_HOST", "192.168.1.142")
+DB_PORT = os.environ.get("DB_PORT", 3306)
+DB_NAME = os.environ.get("DB_NAME", "nextcloud")
+DB_USER = os.environ.get("DB_USER", "nextcloud") # Use correct user
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "Ks120909090909#") # Use correct password
+
+# --- Setup Logging ---
+logging.basicConfig(
+    level=logging.INFO, # Set to DEBUG for detailed logs
+    format='%(asctime)s - %(levelname)-8s - %(name)s - %(message)s',
+    handlers=[
+        logging.FileHandler("transformSECToPeriods.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+logging.getLogger("mysql.connector").setLevel(logging.WARNING)
+
+# --- Database Connection --- (Identical)
+def create_db_connection() -> Optional[mysql.connector.MySQLConnection]:
+    connection = None; logger.debug(f"Attempting DB connection...")
+    try:
+        connection = mysql.connector.connect(host=DB_HOST, port=DB_PORT, database=DB_NAME, user=DB_USER, password=DB_PASSWORD, connection_timeout=10)
+        if connection.is_connected(): logger.info("MariaDB connection successful")
+        else: logger.error("MariaDB connection failed."); connection = None
+    except Error as e: logger.error(f"Error connecting to MariaDB: {e}")
+    except Exception as e: logger.error(f"Unexpected error during DB connection: {e}")
+    return connection
+
+# --- Helper: Get Unique CIKs to Process --- (Identical)
+def get_ciks_to_process(connection) -> List[int]:
+    logger.info(f"Fetching unique CIKs from {SOURCE_TABLE}...")
+    ciks = []; cursor = None
+    try:
+        cursor = connection.cursor(); sql = f"SELECT DISTINCT cik FROM {SOURCE_TABLE} ORDER BY cik"; cursor.execute(sql)
+        results = cursor.fetchall(); ciks = [row[0] for row in results if row[0] is not None]
+        logger.info(f"Found {len(ciks)} unique CIKs to process.")
+    except Error as e: logger.error(f"DB error fetching CIK list: {e}")
+    except Exception as e: logger.error(f"Unexpected error fetching CIK list: {e}", exc_info=True)
+    finally:
+        if cursor: cursor.close()
+    return ciks
+
+# --- Helper: Fetch Data for a Batch of CIKs --- (Identical)
+def fetch_data_for_ciks(connection, cik_batch: List[int]) -> Optional[pd.DataFrame]:
+    if not cik_batch: return pd.DataFrame()
+    logger.debug(f"Fetching data for CIK batch (size {len(cik_batch)})..."); cursor = None
+    all_tags_needed = set(tag for tag_list in TAG_MAP.values() for tag in tag_list)
+    try:
+        cursor = connection.cursor(dictionary=True); tag_placeholders = ', '.join(['%s'] * len(all_tags_needed)); cik_placeholders = ', '.join(['%s'] * len(cik_batch))
+        sql = f"""SELECT cik, adsh, form, period, fy, fp, ddate, qtrs, tag, version, uom, value, updated_at
+                  FROM {SOURCE_TABLE} WHERE cik IN ({cik_placeholders}) AND tag IN ({tag_placeholders}) AND uom = 'USD' ORDER BY cik, ddate, qtrs"""
+        params = tuple(cik_batch) + tuple(all_tags_needed); cursor.execute(sql, params); data = cursor.fetchall()
+        logger.debug(f"Fetched {len(data)} rows for {len(cik_batch)} CIKs.")
+        return pd.DataFrame(data)
+    except Error as e: logger.error(f"DB error fetching data for CIK batch: {e}"); return None
+    except Exception as e: logger.error(f"Unexpected error fetching data for CIK batch: {e}", exc_info=True); return None
+    finally:
+        if cursor: cursor.close()
+
+# --- Helper: Transform Raw Data to Pivoted Format ---
+def transform_data(raw_df: pd.DataFrame) -> pd.DataFrame:
+    """ Pivots raw data and maps tags to structured columns. Includes source_adsh rename. """
+    if raw_df.empty: return pd.DataFrame()
+    logger.info(f"Pivoting and transforming {len(raw_df)} raw data rows...")
+    raw_df['value'] = pd.to_numeric(raw_df['value'], errors='coerce'); raw_df.dropna(subset=['value'], inplace=True)
+    try:
+        pivoted = raw_df.pivot_table(index=['cik', 'adsh', 'form', 'period', 'fy', 'fp', 'ddate', 'qtrs', 'uom'], columns='tag', values='value', aggfunc='last').reset_index()
+        logger.info(f"Pivoted data shape: {pivoted.shape}")
+    except Exception as e: logger.error(f"Error during pivot operation: {e}", exc_info=True); logger.error(f"Sample raw data:\n{raw_df.head().to_string()}"); return pd.DataFrame()
+
+    transformed_df = pd.DataFrame(); transformed_df['cik'] = pivoted['cik']
+    transformed_df['period_end_date'] = pd.to_datetime(pivoted['ddate'], errors='coerce')
+    transformed_df['fiscal_year'] = pivoted['fy']; transformed_df['fiscal_period'] = pivoted['fp']
+    transformed_df['source_adsh'] = pivoted['adsh'] # RENAMED HERE
+    transformed_df['form_type'] = pivoted['form']; transformed_df['currency_reported'] = pivoted['uom']
+
+    logger.info("Mapping XBRL tags to table columns...")
+    processed_tags_count = 0; data_to_add = {}
+    for target_col, source_tags in TAG_MAP.items():
+        db_col_name = target_col
+        data_to_add[db_col_name] = pd.NA
+        for tag in source_tags:
+            if tag in pivoted.columns: data_to_add[db_col_name] = pivoted[tag]; processed_tags_count +=1; break
+    for col_name, col_data in data_to_add.items(): transformed_df[col_name] = col_data
+    logger.info(f"Mapped {processed_tags_count} tag groups to columns.")
+
+    logger.info("Calculating Free Cash Flow...")
+    cfo_col = 'net_cash_ops'; capex_col = 'capex'
+    transformed_df['calculated_fcf'] = pd.NA
+    if cfo_col in transformed_df.columns and capex_col in transformed_df.columns:
+        cfo_vals = pd.to_numeric(transformed_df[cfo_col], errors='coerce'); capex_vals = pd.to_numeric(transformed_df[capex_col], errors='coerce')
+        if cfo_vals.notna().any() and capex_vals.notna().any():
+            valid_calc = cfo_vals.notna() & capex_vals.notna()
+            if CALCULATE_FCF_AS_CFO_MINUS_CAPEX: transformed_df.loc[valid_calc, 'calculated_fcf'] = cfo_vals[valid_calc] - capex_vals[valid_calc]
+            else: transformed_df.loc[valid_calc, 'calculated_fcf'] = cfo_vals[valid_calc] + capex_vals[valid_calc]
+            num_fcf_calcs = valid_calc.sum(); logger.info(f"Calculated FCF for {num_fcf_calcs} periods.")
+        else: logger.warning(f"Could not calculate FCF: CFO or CapEx columns have no valid numeric data.")
+    else: logger.warning(f"Could not calculate FCF: Mapped CFO ('{cfo_col}') or CapEx ('{capex_col}') column missing.")
+
+    transformed_df.dropna(subset=['cik', 'period_end_date', 'source_adsh'], inplace=True) # Ensure PK columns not null
+    logger.info(f"Transformation complete. Result shape: {transformed_df.shape}")
+    logger.debug(f"Transformed columns: {transformed_df.columns.tolist()}")
+    return transformed_df
+
+
+# --- Database Upsert for Pivoted Data ---
+def upsert_period_data(connection, period_data_df: pd.DataFrame):
+    """ Inserts or updates pivoted period data into the target table. """
+    # ***** THIS FUNCTION NOW INCLUDES MORE DEBUGGING *****
+    if period_data_df.empty: logger.info("No period data to upsert."); return 0, 0
+    logger.info(f"Upserting {len(period_data_df)} company-period records...")
+    cursor = None; total_processed = 0; total_errors = 0; i = 0
+
+    # Debug: Check DataFrame columns before fetching DB columns
+    logger.debug(f"DF columns received by upsert: {period_data_df.columns.tolist()}")
+    if 'source_adsh' not in period_data_df.columns:
+         logger.error("FATAL: 'source_adsh' missing from DataFrame in upsert_period_data!")
+         return 0, len(period_data_df)
+
+    db_table_cols = set()
+    try: cursor = connection.cursor(); cursor.execute(f"DESCRIBE {TARGET_TABLE};"); db_table_cols = {row[0] for row in cursor.fetchall()}; logger.debug(f"Target DB columns found: {sorted(list(db_table_cols))}")
+    except Error as e: logger.error(f"Could not describe target table '{TARGET_TABLE}': {e}."); return 0, len(period_data_df)
+    finally:
+        if cursor: cursor.close()
+    if not db_table_cols: logger.error(f"Failed to get columns for target table '{TARGET_TABLE}'."); return 0, len(period_data_df)
+    if 'source_adsh' not in db_table_cols: logger.error("FATAL: 'source_adsh' missing from DB table description!"); return 0, len(period_data_df)
+
+    # Filter DataFrame columns ONLY to those that exist in the DB table
+    cols_to_insert = [col for col in period_data_df.columns if col in db_table_cols]; logger.debug(f"Final columns for insert/update: {cols_to_insert}")
+    if 'source_adsh' not in cols_to_insert: logger.error("FATAL: 'source_adsh' was filtered out! Check DF vs DB column names."); return 0, len(period_data_df)
+
+    data_tuples = []
+    for idx, row in period_data_df.iterrows():
+         # Create dict first for easier inspection
+         row_dict = {col: row.get(col) if not pd.isna(row.get(col)) else None for col in cols_to_insert}
+         # Ensure required PK fields are present before adding tuple
+         if row_dict.get('cik') is None or row_dict.get('period_end_date') is None or row_dict.get('source_adsh') is None:
+              logger.warning(f"Row index {idx} missing PK component(s) after conversion. Skipping row. CIK={row_dict.get('cik')}, PeriodEnd={row_dict.get('period_end_date')}, ADSH={row_dict.get('source_adsh')}")
+              total_errors += 1
+              continue
+         data_tuples.append(tuple(row_dict[col] for col in cols_to_insert)) # Order matters!
+
+    if not data_tuples: logger.warning("No valid data tuples generated for upsert."); return total_processed, total_errors
+
+    cursor = None; batch_cleaned = []
+    try:
+        cursor = connection.cursor(prepared=False); placeholders = ', '.join(['%s'] * len(cols_to_insert))
+        pk_cols = {'cik', 'period_end_date', 'source_adsh'}
+        update_cols = [f"`{col}`=VALUES(`{col}`)" for col in cols_to_insert if col not in pk_cols]
+        update_clause = ', '.join(update_cols) + ', updated_at=NOW()'
+        # Use backticks around column names in INSERT part too
+        sql = f"INSERT INTO {TARGET_TABLE} (`{'`, `'.join(cols_to_insert)}`) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE {update_clause};"
+        logger.debug(f"Upsert SQL Statement:\n{sql}")
+
+        for i in range(0, len(data_tuples), INSERT_BATCH_SIZE):
+            batch_to_process = data_tuples[i : i + INSERT_BATCH_SIZE]
+            if batch_to_process:
+                try:
+                    rows_affected = cursor.executemany(sql, batch_to_process); connection.commit()
+                    logger.debug(f"Committed batch size {len(batch_to_process)} (rows_affected={rows_affected}).")
+                    total_processed += len(batch_to_process)
+                except Error as batch_e:
+                    logger.error(f"DB error during period batch insert (around index {i}): {batch_e}")
+                    logger.error(f"Sample failing data (first row tuple): {batch_to_process[0] if batch_to_process else 'N/A'}")
+                    logger.error(f"Columns for the tuple: {cols_to_insert}")
+                    try: connection.rollback(); logger.info(f"DB rolled back batch.")
+                    except Error as rb_e: logger.error(f"Rollback error: {rb_e}")
+                    total_errors += len(batch_to_process); logger.warning(f"Stopping upsert for this CIK batch."); break
+                except Exception as batch_ex:
+                    logger.error(f"Unexpected error during period batch insert (around index {i}): {batch_ex}", exc_info=True)
+                    try: connection.rollback(); logger.info(f"DB rolled back batch.")
+                    except Error as rb_e: logger.error(f"Rollback error: {rb_e}")
+                    total_errors += len(batch_to_process); logger.warning(f"Stopping upsert for this CIK batch."); break
+    except Error as e: logger.error(f"DB setup error before batch insert: {e}"); total_errors += len(data_tuples); if connection: connection.rollback()
+    except Exception as e: logger.error(f"Unexpected error during period DB upsert prep: {e}", exc_info=True); total_errors += len(data_tuples); if connection: connection.rollback()
+    finally:
+        if cursor: cursor.close()
+        logger.info(f"Period data upsert finished. Processed: {total_processed}, Errors: {total_errors}")
+        return total_processed, total_errors
+
+
+# --- Main Execution ---
+def main():
+    start_time = time.time()
+    logger.info("==================================================")
+    logger.info(f"=== Starting SEC Data Transformation to Periods ===")
+    logger.info(f"Source Table: {SOURCE_TABLE}")
+    logger.info(f"Target Table: {TARGET_TABLE}")
+    logger.info(f"CIK Batch Size: {CIK_BATCH_SIZE}")
+    logger.info("==================================================")
+
+    db_connection = create_db_connection()
+    if not db_connection: logger.critical("Exiting: Database connection failed."); return
+
+    total_processed_periods = 0; total_db_errors = 0; processed_cik_count = 0
+
+    try:
+        ciks = get_ciks_to_process(db_connection)
+        if not ciks: logger.warning("No CIKs found to process."); return
+        total_ciks = len(ciks); logger.info(f"Will process data for {total_ciks} CIKs.")
+
+        for i in range(0, total_ciks, CIK_BATCH_SIZE):
+            cik_batch = ciks[i : i + CIK_BATCH_SIZE]
+            logger.info(f"--- Processing CIK Batch {i//CIK_BATCH_SIZE + 1}/{(total_ciks + CIK_BATCH_SIZE - 1)//CIK_BATCH_SIZE} (CIKs {cik_batch[0]}...{cik_batch[-1]}) ---")
+            raw_data_df = fetch_data_for_ciks(db_connection, cik_batch)
+            if raw_data_df is None or raw_data_df.empty: logger.warning(f"No data fetched for CIK batch, skipping."); processed_cik_count += len(cik_batch); continue
+
+            period_data_df = transform_data(raw_data_df); del raw_data_df
+            if period_data_df is None or period_data_df.empty: logger.warning(f"Transformation yielded no data for CIK batch, skipping."); processed_cik_count += len(cik_batch); continue
+
+            processed, errors = upsert_period_data(db_connection, period_data_df)
+            total_processed_periods += processed; total_db_errors += errors; processed_cik_count += len(cik_batch)
+            # time.sleep(0.5) # Optional delay
+
+    except KeyboardInterrupt: logger.warning("Keyboard interrupt received.")
+    except Exception as e: logger.critical(f"An unexpected error occurred in the main loop: {e}", exc_info=True)
+    finally:
+        if db_connection and db_connection.is_connected():
+            try: db_connection.close(); logger.info("Database connection closed.")
+            except Error as e: logger.error(f"Error closing database connection: {e}")
+
+    end_time = time.time()
+    logger.info("\n==================================================")
+    logger.info(f"=== SEC Data Transformation Process Complete ===")
+    logger.info(f"Total time taken: {end_time - start_time:.2f} seconds")
+    logger.info(f"CIKs processed: {processed_cik_count}/{total_ciks if 'total_ciks' in locals() else 'N/A'}")
+    logger.info(f"Total period records processed/upserted: {total_processed_periods}")
+    logger.info(f"Total period records failed during DB upsert: {total_db_errors}")
+    logger.info("==================================================")
+
+if __name__ == "__main__":
+    main()

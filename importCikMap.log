@@ -1,0 +1,225 @@
+2025-04-12 12:52:39,811 - INFO     - __main__ - ==================================================
+2025-04-12 12:52:39,812 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 12:52:39,812 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 12:52:39,812 - INFO     - __main__ - ==================================================
+2025-04-12 12:52:39,821 - ERROR    - __main__ - Unexpected error during DB connection: module 'ssl' has no attribute 'wrap_socket'
+2025-04-12 12:52:39,822 - CRITICAL - __main__ - Exiting: Database connection failed.
+2025-04-12 12:53:00,764 - INFO     - __main__ - ==================================================
+2025-04-12 12:53:00,765 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 12:53:00,765 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 12:53:00,765 - INFO     - __main__ - ==================================================
+2025-04-12 12:53:00,773 - ERROR    - __main__ - Unexpected error during DB connection: module 'ssl' has no attribute 'wrap_socket'
+2025-04-12 12:53:00,773 - CRITICAL - __main__ - Exiting: Database connection failed.
+2025-04-12 12:55:26,338 - INFO     - __main__ - ==================================================
+2025-04-12 12:55:26,339 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 12:55:26,339 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 12:55:26,339 - INFO     - __main__ - ==================================================
+2025-04-12 12:55:26,545 - INFO     - __main__ - MariaDB connection successful
+2025-04-12 12:55:26,546 - INFO     - __main__ - Attempting to download CIK-Ticker map from https://www.sec.gov/files/company_tickers.json...
+2025-04-12 12:55:27,926 - INFO     - __main__ - Download successful. Processing JSON...
+2025-04-12 12:55:28,021 - INFO     - __main__ - Processed 9732 valid CIK-Ticker mappings.
+2025-04-12 12:55:28,023 - INFO     - __main__ - Attempting to upsert 9732 CIK records into the database...
+2025-04-12 12:55:29,286 - ERROR    - __main__ - Unexpected error during CIK batch insert (around index 0): Commands out of sync; you can't run this command now
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 168, in upsert_cik_data
+    connection.commit()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 609, in commit
+    self._cmysql.commit()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+2025-04-12 12:55:29,288 - ERROR    - __main__ - Unexpected error during CIK DB upsert preparation: Commands out of sync; you can't run this command now
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 168, in upsert_cik_data
+    connection.commit()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 609, in commit
+    self._cmysql.commit()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 181, in upsert_cik_data
+    connection.rollback()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 615, in rollback
+    self._cmysql.rollback()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+2025-04-12 12:55:29,289 - INFO     - __main__ - CIK map upsert finished. Processed in batches: 0, Errors: 9732
+2025-04-12 12:55:29,291 - INFO     - __main__ - 
+==================================================
+2025-04-12 12:55:29,292 - INFO     - __main__ - === CIK Map Import Process Complete ===
+2025-04-12 12:55:29,292 - INFO     - __main__ - Total time taken: 2.95 seconds
+2025-04-12 12:55:29,292 - INFO     - __main__ - Total CIK records processed from source: 9732
+2025-04-12 12:55:29,292 - INFO     - __main__ - CIK records successfully processed in DB batches: 0
+2025-04-12 12:55:29,293 - INFO     - __main__ - CIK records failed during DB batch processing: 9732
+2025-04-12 12:55:29,293 - INFO     - __main__ - ==================================================
+2025-04-12 13:02:48,294 - INFO     - __main__ - ==================================================
+2025-04-12 13:02:48,294 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 13:02:48,295 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 13:02:48,295 - INFO     - __main__ - ==================================================
+2025-04-12 13:02:48,521 - ERROR    - __main__ - Error connecting to MariaDB: 1045 (28000): Access denied for user 'your_db_user'@'192.168.1.137' (using password: YES)
+2025-04-12 13:02:48,522 - CRITICAL - __main__ - Exiting: Database connection failed.
+2025-04-12 13:03:12,568 - INFO     - __main__ - ==================================================
+2025-04-12 13:03:12,568 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 13:03:12,569 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 13:03:12,569 - INFO     - __main__ - ==================================================
+2025-04-12 13:03:12,790 - INFO     - __main__ - MariaDB connection successful
+2025-04-12 13:03:12,791 - INFO     - __main__ - Attempting to download CIK-Ticker map from https://www.sec.gov/files/company_tickers.json...
+2025-04-12 13:03:14,105 - INFO     - __main__ - Download successful. Processing JSON...
+2025-04-12 13:03:14,210 - INFO     - __main__ - Processed 9732 valid CIK-Ticker mappings.
+2025-04-12 13:03:14,213 - INFO     - __main__ - Attempting to upsert 9732 CIK records into the database...
+2025-04-12 13:03:14,803 - ERROR    - __main__ - Unexpected error during CIK batch insert (around index 0): Commands out of sync; you can't run this command now
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 171, in upsert_cik_data
+    connection.commit()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 609, in commit
+    self._cmysql.commit()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+2025-04-12 13:03:14,805 - ERROR    - __main__ - Unexpected error during CIK DB upsert preparation: Commands out of sync; you can't run this command now
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 171, in upsert_cik_data
+    connection.commit()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 609, in commit
+    self._cmysql.commit()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 183, in upsert_cik_data
+    connection.rollback()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 615, in rollback
+    self._cmysql.rollback()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+2025-04-12 13:03:14,807 - INFO     - __main__ - CIK map upsert finished. Processed in batches: 0, Errors: 9732
+2025-04-12 13:03:14,809 - INFO     - __main__ - 
+==================================================
+2025-04-12 13:03:14,809 - INFO     - __main__ - === CIK Map Import Process Complete ===
+2025-04-12 13:03:14,809 - INFO     - __main__ - Total time taken: 2.24 seconds
+2025-04-12 13:03:14,810 - INFO     - __main__ - Total CIK records processed from source file: 9732
+2025-04-12 13:03:14,810 - INFO     - __main__ - CIK records successfully processed in DB batches: 0
+2025-04-12 13:03:14,810 - INFO     - __main__ - CIK records failed during DB batch processing: 9732
+2025-04-12 13:03:14,810 - INFO     - __main__ - CIK records skipped/malformed before DB: 0
+2025-04-12 13:03:14,810 - INFO     - __main__ - ==================================================
+2025-04-12 13:03:46,838 - INFO     - __main__ - ==================================================
+2025-04-12 13:03:46,839 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 13:03:46,839 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 13:03:46,839 - INFO     - __main__ - ==================================================
+2025-04-12 13:03:47,008 - INFO     - __main__ - MariaDB connection successful
+2025-04-12 13:03:47,008 - INFO     - __main__ - Attempting to download CIK-Ticker map from https://www.sec.gov/files/company_tickers.json...
+2025-04-12 13:03:48,171 - INFO     - __main__ - Download successful. Processing JSON...
+2025-04-12 13:03:48,269 - INFO     - __main__ - Processed 9732 valid CIK-Ticker mappings.
+2025-04-12 13:03:48,271 - INFO     - __main__ - Attempting to upsert 9732 CIK records into the database...
+2025-04-12 13:03:48,804 - ERROR    - __main__ - Unexpected error during CIK batch insert (around index 0): Commands out of sync; you can't run this command now
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 171, in upsert_cik_data
+    connection.commit()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 609, in commit
+    self._cmysql.commit()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+2025-04-12 13:03:48,806 - ERROR    - __main__ - Unexpected error during CIK DB upsert preparation: Commands out of sync; you can't run this command now
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 171, in upsert_cik_data
+    connection.commit()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 609, in commit
+    self._cmysql.commit()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 183, in upsert_cik_data
+    connection.rollback()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 615, in rollback
+    self._cmysql.rollback()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+2025-04-12 13:03:48,808 - INFO     - __main__ - CIK map upsert finished. Processed in batches: 0, Errors: 9732
+2025-04-12 13:03:48,810 - INFO     - __main__ - 
+==================================================
+2025-04-12 13:03:48,811 - INFO     - __main__ - === CIK Map Import Process Complete ===
+2025-04-12 13:03:48,811 - INFO     - __main__ - Total time taken: 1.97 seconds
+2025-04-12 13:03:48,811 - INFO     - __main__ - Total CIK records processed from source file: 9732
+2025-04-12 13:03:48,812 - INFO     - __main__ - CIK records successfully processed in DB batches: 0
+2025-04-12 13:03:48,812 - INFO     - __main__ - CIK records failed during DB batch processing: 9732
+2025-04-12 13:03:48,813 - INFO     - __main__ - CIK records skipped/malformed before DB: 0
+2025-04-12 13:03:48,813 - INFO     - __main__ - ==================================================
+2025-04-12 13:07:53,870 - INFO     - __main__ - ==================================================
+2025-04-12 13:07:53,871 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 13:07:53,871 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 13:07:53,872 - INFO     - __main__ - ==================================================
+2025-04-12 13:07:54,102 - INFO     - __main__ - MariaDB connection successful
+2025-04-12 13:07:54,102 - INFO     - __main__ - Attempting to download CIK-Ticker map from https://www.sec.gov/files/company_tickers.json...
+2025-04-12 13:07:54,367 - INFO     - __main__ - Download successful. Processing JSON...
+2025-04-12 13:07:54,464 - INFO     - __main__ - Processed 9732 valid CIK-Ticker mappings.
+2025-04-12 13:07:54,467 - INFO     - __main__ - Attempting to upsert 9732 CIK records into the database...
+2025-04-12 13:07:55,239 - ERROR    - __main__ - Unexpected error during CIK batch insert (around index 0): Commands out of sync; you can't run this command now
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 144, in upsert_cik_data
+    connection.commit()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 609, in commit
+    self._cmysql.commit()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+2025-04-12 13:07:55,241 - ERROR    - __main__ - Unexpected error during CIK DB upsert preparation: Commands out of sync; you can't run this command now
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 144, in upsert_cik_data
+    connection.commit()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 609, in commit
+    self._cmysql.commit()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/kay/workspace/stock/importCikMap.py", line 159, in upsert_cik_data
+    connection.rollback()
+  File "/home/kay/workspace/stock/myenv/lib/python3.12/site-packages/mysql/connector/connection_cext.py", line 615, in rollback
+    self._cmysql.rollback()
+_mysql_connector.MySQLInterfaceError: Commands out of sync; you can't run this command now
+2025-04-12 13:07:55,243 - INFO     - __main__ - CIK map upsert finished. Processed batches: 0, Errors: 9732
+2025-04-12 13:07:55,245 - INFO     - __main__ - 
+==================================================
+2025-04-12 13:07:55,245 - INFO     - __main__ - === CIK Map Import Process Complete ===
+2025-04-12 13:07:55,245 - INFO     - __main__ - Total time taken: 1.37 seconds
+2025-04-12 13:07:55,246 - INFO     - __main__ - Total CIK records processed from source file: 9732
+2025-04-12 13:07:55,246 - INFO     - __main__ - CIK records successfully processed in DB batches: 0
+2025-04-12 13:07:55,246 - INFO     - __main__ - CIK records failed during DB batch processing: 9732
+2025-04-12 13:07:55,247 - INFO     - __main__ - CIK records skipped/malformed before DB: 0
+2025-04-12 13:07:55,247 - INFO     - __main__ - ==================================================
+2025-04-12 13:10:32,549 - INFO     - __main__ - ==================================================
+2025-04-12 13:10:32,550 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 13:10:32,550 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 13:10:32,550 - INFO     - __main__ - ==================================================
+2025-04-12 13:10:32,563 - INFO     - __main__ - PyMySQL connection successful
+2025-04-12 13:10:32,563 - INFO     - __main__ - Attempting to download CIK-Ticker map from https://www.sec.gov/files/company_tickers.json...
+2025-04-12 13:10:33,937 - INFO     - __main__ - Download successful. Processing JSON...
+2025-04-12 13:10:34,041 - INFO     - __main__ - Processed 9732 valid CIK-Ticker mappings.
+2025-04-12 13:10:34,044 - INFO     - __main__ - Attempting to upsert 9732 CIK records into the database...
+2025-04-12 13:10:35,544 - INFO     - __main__ - CIK map upsert finished. Processed batches: 9732, Errors: 0
+2025-04-12 13:10:35,546 - INFO     - __main__ - Database connection closed.
+2025-04-12 13:10:35,547 - INFO     - __main__ - 
+==================================================
+2025-04-12 13:10:35,547 - INFO     - __main__ - === CIK Map Import Process Complete ===
+2025-04-12 13:10:35,547 - INFO     - __main__ - Total time taken: 3.00 seconds
+2025-04-12 13:10:35,548 - INFO     - __main__ - Total CIK records processed from source file: 9732
+2025-04-12 13:10:35,548 - INFO     - __main__ - CIK records successfully processed in DB batches: 9732
+2025-04-12 13:10:35,548 - INFO     - __main__ - CIK records failed during DB batch processing: 0
+2025-04-12 13:10:35,548 - INFO     - __main__ - CIK records skipped/malformed before DB: 0
+2025-04-12 13:10:35,549 - INFO     - __main__ - ==================================================
+2025-04-12 13:10:39,465 - INFO     - __main__ - ==================================================
+2025-04-12 13:10:39,465 - INFO     - __main__ - === Starting SEC CIK-Ticker Map Import ===
+2025-04-12 13:10:39,465 - INFO     - __main__ - Target Table: company_cik_map
+2025-04-12 13:10:39,466 - INFO     - __main__ - ==================================================
+2025-04-12 13:10:39,477 - INFO     - __main__ - PyMySQL connection successful
+2025-04-12 13:10:39,477 - INFO     - __main__ - Attempting to download CIK-Ticker map from https://www.sec.gov/files/company_tickers.json...
+2025-04-12 13:10:40,546 - INFO     - __main__ - Download successful. Processing JSON...
+2025-04-12 13:10:40,644 - INFO     - __main__ - Processed 9732 valid CIK-Ticker mappings.
+2025-04-12 13:10:40,646 - INFO     - __main__ - Attempting to upsert 9732 CIK records into the database...
+2025-04-12 13:10:42,258 - INFO     - __main__ - CIK map upsert finished. Processed batches: 9732, Errors: 0
+2025-04-12 13:10:42,261 - INFO     - __main__ - Database connection closed.
+2025-04-12 13:10:42,261 - INFO     - __main__ - 
+==================================================
+2025-04-12 13:10:42,261 - INFO     - __main__ - === CIK Map Import Process Complete ===
+2025-04-12 13:10:42,262 - INFO     - __main__ - Total time taken: 2.80 seconds
+2025-04-12 13:10:42,262 - INFO     - __main__ - Total CIK records processed from source file: 9732
+2025-04-12 13:10:42,262 - INFO     - __main__ - CIK records successfully processed in DB batches: 9732
+2025-04-12 13:10:42,262 - INFO     - __main__ - CIK records failed during DB batch processing: 0
+2025-04-12 13:10:42,262 - INFO     - __main__ - CIK records skipped/malformed before DB: 0
+2025-04-12 13:10:42,263 - INFO     - __main__ - ==================================================

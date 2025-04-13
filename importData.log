@@ -1,0 +1,264 @@
+2025-04-06 19:24:51,285 - INFO     - ==================================================
+2025-04-06 19:24:51,287 - INFO     - === Starting Stock Data Import Process ===
+2025-04-06 19:24:51,288 - INFO     - Analysis Period: 5 years
+2025-04-06 19:24:51,289 - INFO     - ==================================================
+2025-04-06 19:24:51,763 - INFO     - package: mysql.connector.plugins
+2025-04-06 19:24:51,766 - INFO     - plugin_name: mysql_native_password
+2025-04-06 19:24:51,770 - INFO     - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2025-04-06 19:24:51,783 - INFO     - MariaDB connection successful
+2025-04-06 19:24:51,787 - INFO     - Attempting to fetch US stock list from TradingView...
+2025-04-06 19:24:52,968 - INFO     - Fetched batch 1 (1500 tickers). Total: 1500
+2025-04-06 19:24:54,871 - INFO     - Fetched batch 2 (1500 tickers). Total: 3000
+2025-04-06 19:24:56,761 - INFO     - Fetched batch 3 (1348 tickers). Total: 4348
+2025-04-06 19:24:56,778 - INFO     - Last TV batch smaller than requested, assuming end of list.
+2025-04-06 19:24:56,779 - INFO     - Fetched 4348 raw tickers. Starting cleaning...
+2025-04-06 19:24:56,943 - INFO     - Cleaning complete. Found 4346 unique, potentially valid symbols.
+2025-04-06 19:24:57,056 - INFO     - Starting financial data processing for 4346 tickers...
+2025-04-06 19:24:57,141 - INFO     - --- [1/4346] Processing: A ---
+2025-04-06 19:24:59,744 - WARNING  - [A] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 19:24:59,813 - WARNING  - [A] Skipping DB update due to fetch/calculation error.
+2025-04-06 19:25:00,189 - INFO     - --- [2/4346] Processing: AA ---
+2025-04-06 19:25:02,343 - WARNING  - [AA] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 19:25:02,462 - WARNING  - [AA] Skipping DB update due to fetch/calculation error.
+2025-04-06 19:25:02,818 - INFO     - --- [3/4346] Processing: AACG ---
+2025-04-06 19:25:04,595 - WARNING  - [AACG] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 19:25:04,656 - WARNING  - [AACG] Skipping DB update due to fetch/calculation error.
+2025-04-06 19:25:05,002 - INFO     - --- [4/4346] Processing: AACT ---
+2025-04-06 19:25:05,931 - WARNING  - [AACT] Insufficient valid data points after cleaning (3 years < 5 required).
+2025-04-06 19:25:06,039 - WARNING  - [AACT] Skipping DB update due to fetch/calculation error.
+2025-04-06 19:25:06,497 - INFO     - --- [5/4346] Processing: AAL ---
+2025-04-06 19:25:08,588 - WARNING  - [AAL] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 19:25:08,622 - WARNING  - [AAL] Skipping DB update due to fetch/calculation error.
+2025-04-06 19:25:08,995 - INFO     - --- [6/4346] Processing: AAM ---
+2025-04-06 19:25:09,634 - WARNING  - [AAM] yfinance returned empty DataFrame for financials or cashflow.
+2025-04-06 19:25:09,639 - WARNING  - [AAM] Skipping DB update due to fetch/calculation error.
+2025-04-06 19:25:10,007 - INFO     - --- [7/4346] Processing: AAME ---
+2025-04-06 19:25:11,067 - CRITICAL - An unexpected error occurred in the main loop: module 'yfinance.exceptions' has no attribute 'YFinanceException'
+Traceback (most recent call last):
+  File "E:\My Documents\workspace\Stock\importData.py", line 232, in calculate_financial_summary
+    da_keys = [idx for idx in financials.index + cashflow.index if 'depreciation' in idx.lower() and ('amortization' in idx.lower() or idx.lower().endswith('depreciation'))] # Check both statements
+                              ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\ops\common.py", line 76, in new_method
+    return method(self, other)
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\arraylike.py", line 186, in __add__
+    return self._arith_method(other, operator.add)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\indexes\base.py", line 7238, in _arith_method
+    return super()._arith_method(other, op)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\base.py", line 1382, in _arith_method
+    result = ops.arithmetic_op(lvalues, rvalues, op)
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\ops\array_ops.py", line 283, in arithmetic_op
+    res_values = _na_arithmetic_op(left, right, op)  # type: ignore[arg-type]
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\ops\array_ops.py", line 218, in _na_arithmetic_op
+    result = func(left, right)
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\computation\expressions.py", line 242, in evaluate
+    return _evaluate(op, op_str, a, b)  # type: ignore[misc]
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\computation\expressions.py", line 73, in _evaluate_standard
+    return op(a, b)
+ValueError: operands could not be broadcast together with shapes (33,) (46,) 
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "E:\My Documents\workspace\Stock\importData.py", line 499, in main
+    summary = calculate_financial_summary(ticker)
+  File "E:\My Documents\workspace\Stock\importData.py", line 361, in calculate_financial_summary
+    except yf.exceptions.YFinanceException as yfe: # Catch specific yfinance errors
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'yfinance.exceptions' has no attribute 'YFinanceException'. Did you mean: 'YFDataException'?
+2025-04-06 19:25:12,123 - INFO     - Database connection closed.
+2025-04-06 19:25:12,124 - INFO     - 
+==================================================
+2025-04-06 19:25:12,125 - INFO     - === Data Import Process Complete ===
+2025-04-06 19:25:12,127 - INFO     - Total time taken: 20.84 seconds
+2025-04-06 19:25:12,128 - INFO     - Tickers attempted: 7
+2025-04-06 19:25:12,129 - INFO     - Tickers with fetch/calculation errors: 6
+2025-04-06 19:25:12,130 - INFO     - Successful DB updates: 0
+2025-04-06 19:25:12,132 - INFO     - ==================================================
+2025-04-06 20:13:57,854 - INFO     - ==================================================
+2025-04-06 20:13:57,855 - INFO     - === Starting Stock Data Import Process ===
+2025-04-06 20:13:57,856 - INFO     - Analysis Period: 5 years
+2025-04-06 20:13:57,856 - INFO     - ==================================================
+2025-04-06 20:13:58,290 - INFO     - package: mysql.connector.plugins
+2025-04-06 20:13:58,292 - INFO     - plugin_name: mysql_native_password
+2025-04-06 20:13:58,296 - INFO     - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2025-04-06 20:13:58,307 - INFO     - MariaDB connection successful
+2025-04-06 20:13:58,308 - INFO     - Attempting to fetch US stock list from TradingView...
+2025-04-06 20:13:59,304 - INFO     - Fetched batch 1 (1500 tickers). Total: 1500
+2025-04-06 20:14:01,308 - INFO     - Fetched batch 2 (1500 tickers). Total: 3000
+2025-04-06 20:14:03,159 - INFO     - Fetched batch 3 (1348 tickers). Total: 4348
+2025-04-06 20:14:03,160 - INFO     - Last TV batch smaller than requested, assuming end of list.
+2025-04-06 20:14:03,161 - INFO     - Fetched 4348 raw tickers. Starting cleaning...
+2025-04-06 20:14:03,194 - INFO     - Cleaning complete. Found 4346 unique, potentially valid symbols.
+2025-04-06 20:14:03,199 - INFO     - Starting financial data processing for 4346 tickers...
+2025-04-06 20:14:03,203 - INFO     - --- [1/4346] Processing: A ---
+2025-04-06 20:14:05,047 - WARNING  - [A] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:14:05,048 - WARNING  - [A] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:14:05,327 - INFO     - --- [2/4346] Processing: AA ---
+2025-04-06 20:14:06,163 - WARNING  - [AA] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:14:06,164 - WARNING  - [AA] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:14:06,436 - INFO     - --- [3/4346] Processing: AACG ---
+2025-04-06 20:14:07,377 - WARNING  - [AACG] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:14:07,378 - WARNING  - [AACG] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:14:07,690 - INFO     - --- [4/4346] Processing: AACT ---
+2025-04-06 20:14:08,337 - WARNING  - [AACT] Insufficient valid data points after cleaning (3 years < 5 required).
+2025-04-06 20:14:08,339 - WARNING  - [AACT] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:14:08,605 - INFO     - --- [5/4346] Processing: AAL ---
+2025-04-06 20:14:09,381 - WARNING  - [AAL] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:14:09,382 - WARNING  - [AAL] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:14:09,656 - INFO     - --- [6/4346] Processing: AAM ---
+2025-04-06 20:14:10,069 - WARNING  - [AAM] yfinance returned empty DataFrame for financials or cashflow.
+2025-04-06 20:14:10,070 - WARNING  - [AAM] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:14:10,384 - INFO     - --- [7/4346] Processing: AAME ---
+2025-04-06 20:14:11,333 - CRITICAL - An unexpected error occurred in the main loop: module 'yfinance.exceptions' has no attribute 'YFinanceException'
+Traceback (most recent call last):
+  File "E:\My Documents\workspace\Stock\importData.py", line 232, in calculate_financial_summary
+    da_keys = [idx for idx in financials.index + cashflow.index if 'depreciation' in idx.lower() and ('amortization' in idx.lower() or idx.lower().endswith('depreciation'))] # Check both statements
+                              ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\ops\common.py", line 76, in new_method
+    return method(self, other)
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\arraylike.py", line 186, in __add__
+    return self._arith_method(other, operator.add)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\indexes\base.py", line 7238, in _arith_method
+    return super()._arith_method(other, op)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\base.py", line 1382, in _arith_method
+    result = ops.arithmetic_op(lvalues, rvalues, op)
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\ops\array_ops.py", line 283, in arithmetic_op
+    res_values = _na_arithmetic_op(left, right, op)  # type: ignore[arg-type]
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\ops\array_ops.py", line 218, in _na_arithmetic_op
+    result = func(left, right)
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\computation\expressions.py", line 242, in evaluate
+    return _evaluate(op, op_str, a, b)  # type: ignore[misc]
+  File "C:\Users\koonk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\pandas\core\computation\expressions.py", line 73, in _evaluate_standard
+    return op(a, b)
+ValueError: operands could not be broadcast together with shapes (33,) (46,) 
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "E:\My Documents\workspace\Stock\importData.py", line 499, in main
+    summary = calculate_financial_summary(ticker)
+  File "E:\My Documents\workspace\Stock\importData.py", line 361, in calculate_financial_summary
+    except yf.exceptions.YFinanceException as yfe: # Catch specific yfinance errors
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'yfinance.exceptions' has no attribute 'YFinanceException'. Did you mean: 'YFDataException'?
+2025-04-06 20:14:11,707 - INFO     - Database connection closed.
+2025-04-06 20:14:11,723 - INFO     - 
+==================================================
+2025-04-06 20:14:11,766 - INFO     - === Data Import Process Complete ===
+2025-04-06 20:14:11,767 - INFO     - Total time taken: 13.87 seconds
+2025-04-06 20:14:11,774 - INFO     - Tickers attempted: 7
+2025-04-06 20:14:11,777 - INFO     - Tickers with fetch/calculation errors: 6
+2025-04-06 20:14:11,781 - INFO     - Successful DB updates: 0
+2025-04-06 20:14:11,838 - INFO     - ==================================================
+2025-04-06 20:20:12,692 - INFO     - ==================================================
+2025-04-06 20:20:12,885 - INFO     - === Starting Stock Data Import Process ===
+2025-04-06 20:20:12,914 - INFO     - Analysis Period: 5 years
+2025-04-06 20:20:12,982 - INFO     - ==================================================
+2025-04-06 20:20:13,795 - INFO     - package: mysql.connector.plugins
+2025-04-06 20:20:13,875 - INFO     - plugin_name: mysql_native_password
+2025-04-06 20:20:13,934 - INFO     - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2025-04-06 20:20:13,997 - INFO     - MariaDB connection successful
+2025-04-06 20:20:14,014 - INFO     - Attempting to fetch US stock list from TradingView...
+2025-04-06 20:20:15,508 - INFO     - Fetched batch 1 (1500 tickers). Total: 1500
+2025-04-06 20:20:17,775 - INFO     - Fetched batch 2 (1500 tickers). Total: 3000
+2025-04-06 20:20:19,702 - INFO     - Fetched batch 3 (1348 tickers). Total: 4348
+2025-04-06 20:20:19,703 - INFO     - Last TV batch smaller than requested, assuming end of list.
+2025-04-06 20:20:19,704 - INFO     - Fetched 4348 raw tickers. Starting cleaning...
+2025-04-06 20:20:19,743 - INFO     - Cleaning complete. Found 4346 unique, potentially valid symbols.
+2025-04-06 20:20:19,747 - INFO     - Starting financial data processing for 4346 tickers...
+2025-04-06 20:20:19,750 - INFO     - --- [1/4346] Processing: A ---
+2025-04-06 20:20:21,718 - WARNING  - [A] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:21,719 - WARNING  - [A] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:22,020 - INFO     - --- [2/4346] Processing: AA ---
+2025-04-06 20:20:22,826 - WARNING  - [AA] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:22,827 - WARNING  - [AA] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:23,112 - INFO     - --- [3/4346] Processing: AACG ---
+2025-04-06 20:20:23,832 - WARNING  - [AACG] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:23,834 - WARNING  - [AACG] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:24,152 - INFO     - --- [4/4346] Processing: AACT ---
+2025-04-06 20:20:24,720 - WARNING  - [AACT] Insufficient valid data points after cleaning (3 years < 5 required).
+2025-04-06 20:20:24,721 - WARNING  - [AACT] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:25,143 - INFO     - --- [5/4346] Processing: AAL ---
+2025-04-06 20:20:25,908 - WARNING  - [AAL] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:25,909 - WARNING  - [AAL] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:26,229 - INFO     - --- [6/4346] Processing: AAM ---
+2025-04-06 20:20:26,652 - WARNING  - [AAM] yfinance returned empty DataFrame for financials or cashflow.
+2025-04-06 20:20:26,653 - WARNING  - [AAM] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:26,932 - INFO     - --- [7/4346] Processing: AAME ---
+2025-04-06 20:20:27,706 - WARNING  - [AAME] EBITDA calc failed: Missing OpIncome ('None') or D&A ('Depreciation And Amortization').
+2025-04-06 20:20:27,708 - WARNING  - [AAME] Could not obtain valid data series for both EBITDA and FCF after extraction/calculation.
+2025-04-06 20:20:27,709 - WARNING  - [AAME] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:27,988 - INFO     - --- [8/4346] Processing: AAMI ---
+2025-04-06 20:20:28,791 - WARNING  - [AAMI] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:28,793 - WARNING  - [AAMI] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:29,068 - INFO     - --- [9/4346] Processing: AAOI ---
+2025-04-06 20:20:29,883 - WARNING  - [AAOI] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:29,884 - WARNING  - [AAOI] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:30,151 - INFO     - --- [10/4346] Processing: AAON ---
+2025-04-06 20:20:30,962 - WARNING  - [AAON] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:30,963 - WARNING  - [AAON] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:31,231 - INFO     - --- [11/4346] Processing: AAP ---
+2025-04-06 20:20:31,987 - WARNING  - [AAP] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:31,988 - WARNING  - [AAP] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:32,263 - INFO     - --- [12/4346] Processing: AAPL ---
+2025-04-06 20:20:33,170 - WARNING  - [AAPL] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:33,171 - WARNING  - [AAPL] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:33,443 - INFO     - --- [13/4346] Processing: AARD ---
+2025-04-06 20:20:34,116 - WARNING  - [AARD] Insufficient valid data points after cleaning (3 years < 5 required).
+2025-04-06 20:20:34,117 - WARNING  - [AARD] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:34,393 - INFO     - --- [14/4346] Processing: AB ---
+2025-04-06 20:20:34,955 - WARNING  - [AB] EBITDA calc failed: Missing OpIncome ('None') or D&A ('None').
+2025-04-06 20:20:34,956 - WARNING  - [AB] Could not obtain valid data series for both EBITDA and FCF after extraction/calculation.
+2025-04-06 20:20:34,957 - WARNING  - [AB] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:35,236 - INFO     - --- [15/4346] Processing: ABAT ---
+2025-04-06 20:20:35,967 - WARNING  - [ABAT] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:35,967 - WARNING  - [ABAT] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:36,250 - INFO     - --- [16/4346] Processing: ABBV ---
+2025-04-06 20:20:37,229 - WARNING  - [ABBV] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:37,230 - WARNING  - [ABBV] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:37,550 - INFO     - --- [17/4346] Processing: ABCB ---
+2025-04-06 20:20:38,289 - WARNING  - [ABCB] EBITDA calc failed: Missing OpIncome ('None') or D&A ('Depreciation').
+2025-04-06 20:20:38,290 - WARNING  - [ABCB] Could not obtain valid data series for both EBITDA and FCF after extraction/calculation.
+2025-04-06 20:20:38,291 - WARNING  - [ABCB] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:38,563 - INFO     - --- [18/4346] Processing: ABCL ---
+2025-04-06 20:20:39,520 - WARNING  - [ABCL] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:39,521 - WARNING  - [ABCL] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:39,800 - INFO     - --- [19/4346] Processing: ABEO ---
+2025-04-06 20:20:40,622 - WARNING  - [ABEO] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:40,623 - WARNING  - [ABEO] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:40,902 - INFO     - --- [20/4346] Processing: ABG ---
+2025-04-06 20:20:41,676 - WARNING  - [ABG] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:41,677 - WARNING  - [ABG] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:41,951 - INFO     - --- [21/4346] Processing: ABL ---
+2025-04-06 20:20:42,814 - WARNING  - [ABL] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:42,815 - WARNING  - [ABL] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:43,126 - INFO     - --- [22/4346] Processing: ABLV ---
+2025-04-06 20:20:43,861 - WARNING  - [ABLV] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:43,862 - WARNING  - [ABLV] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:44,130 - INFO     - --- [23/4346] Processing: ABM ---
+2025-04-06 20:20:44,988 - WARNING  - [ABM] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:44,989 - WARNING  - [ABM] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:45,265 - INFO     - --- [24/4346] Processing: ABNB ---
+2025-04-06 20:20:46,237 - WARNING  - [ABNB] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:46,243 - WARNING  - [ABNB] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:46,512 - INFO     - --- [25/4346] Processing: ABOS ---
+2025-04-06 20:20:47,507 - WARNING  - [ABOS] Insufficient valid data points after cleaning (4 years < 5 required).
+2025-04-06 20:20:47,508 - WARNING  - [ABOS] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:47,855 - INFO     - --- [26/4346] Processing: ABP ---
+2025-04-06 20:20:48,543 - WARNING  - [ABP] Insufficient valid data points after cleaning (2 years < 5 required).
+2025-04-06 20:20:48,544 - WARNING  - [ABP] Skipping DB update due to fetch/calculation error.
+2025-04-06 20:20:48,814 - INFO     - --- [27/4346] Processing: ABSI ---
+2025-04-06 20:20:49,384 - WARNING  - Keyboard interrupt received. Shutting down...
+2025-04-06 20:20:49,389 - INFO     - Database connection closed.
+2025-04-06 20:20:49,391 - INFO     - 
+==================================================
+2025-04-06 20:20:49,392 - INFO     - === Data Import Process Complete ===
+2025-04-06 20:20:49,398 - INFO     - Total time taken: 36.70 seconds
+2025-04-06 20:20:49,400 - INFO     - Tickers attempted: 27
+2025-04-06 20:20:49,408 - INFO     - Tickers with fetch/calculation errors: 26
+2025-04-06 20:20:49,411 - INFO     - Successful DB updates: 0
+2025-04-06 20:20:49,412 - INFO     - ==================================================

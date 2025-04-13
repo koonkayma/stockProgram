@@ -1,0 +1,123 @@
+import requests
+import pandas as pd
+import time
+import logging
+from typing import List, Optional, Tuple
+# ... other imports
+
+# --- Configuration ---
+# ... (keep other configs)
+DELAY_BETWEEN_CALLS = 1.0 # Adjusted delay, can be tuned
+
+# TradingView API configuration
+# ... (keep headers)
+
+# --- Setup Logging ---
+# ... (keep logging setup)
+
+def get_all_us_stocks() -> List[str]:
+    """Fetches ALL US stocks matching the filters from TradingView scanner."""
+    all_tickers = []
+    current_range = 0
+    batch_size = 1000 # TradingView scanner limit per request might vary, 1000 is often okay
+    # REMOVED max_tickers limit - rely on API response to know when to stop
+
+    logging.info("Fetching US stocks from TradingView (will continue until API returns no more)...")
+    while True: # Loop indefinitely until a break condition is met
+        payload = {
+            "filter": [
+                {"left": "exchange", "operation": "in_range", "right": ["NYSE", "NASDAQ", "AMEX"]},
+                {"left": "type", "operation": "in_range", "right": ["stock"]},
+                {"left": "subtype", "operation": "in_range", "right": ["common", ""]}, # Filter for common stocks
+                # Consider adding a basic liquidity filter if needed, e.g., volume or market cap
+                # {"left": "market_cap_basic", "operation": "greater", "right": 50000000} # e.g., > $50M market cap
+            ],
+            "options": {"lang": "en"},
+            "symbols": {"query": {"types": []}, "tickers": []},
+            "columns": ["name"],
+            "sort": {"sortBy": "market_cap_basic", "sortOrder": "desc"}, # Or "volume" etc.
+            "range": [current_range, current_range + batch_size]
+        }
+        try:
+            logging.debug(f"Requesting range: [{current_range}, {current_range + batch_size}]")
+            response = requests.post(TRADINGVIEW_API_URL, json=payload, headers=HEADERS, timeout=20) # Increased timeout
+            response.raise_for_status()
+            data = response.json()
+
+            # Check if the 'data' key exists and is a list
+            if 'data' not in data or not isinstance(data['data'], list) or not data['data']:
+                logging.info(f"No more data found at range starting {current_range} or invalid response structure. Total tickers fetched: {len(all_tickers)}")
+                break # Exit loop if no more data or unexpected format
+
+            batch_tickers = [item['d'][0] for item in data['data'] if 'd' in item and item['d']] # Safer extraction
+            
+            if not batch_tickers: # Handle case where 'data' exists but items are empty/malformed
+                 logging.info(f"Received empty batch within 'data' list at range {current_range}. Assuming end of list.")
+                 break
+
+            all_tickers.extend(batch_tickers)
+            logging.info(f"Fetched batch {current_range // batch_size + 1}. Total tickers so far: {len(all_tickers)}")
+
+            # Check if the API returned fewer results than requested (indicates the end)
+            if len(batch_tickers) < batch_size:
+                 logging.info(f"Last batch fetched {len(batch_tickers)} tickers (less than requested {batch_size}). Assuming end of list.")
+                 break # Exit if the last batch wasn't full
+
+            current_range += batch_size # Increment for the next batch
+            time.sleep(DELAY_BETWEEN_CALLS) # Delay between batches
+
+        except requests.exceptions.Timeout:
+             logging.warning(f"Timeout fetching stocks batch starting at {current_range}. Retrying after delay...")
+             time.sleep(10) # Wait longer after a timeout
+             continue # Retry the same range
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"HTTP Error fetching US stocks batch starting at {current_range}: {e}")
+            logging.error(f"Response Status: {response.status_code if 'response' in locals() else 'N/A'}")
+            try:
+                logging.error(f"Response Body: {response.text if 'response' in locals() else 'N/A'}")
+            except Exception:
+                 pass
+            logging.info("Stopping fetch due to HTTP error.")
+            break # Stop fetching if a persistent error occurs
+
+        except Exception as e:
+             logging.error(f"Unexpected error fetching stocks batch starting at {current_range}: {e}")
+             logging.exception("Traceback:") # Log full traceback for unexpected errors
+             break # Stop fetching on unexpected errors
+
+    logging.info(f"Finished fetching. Total raw tickers fetched: {len(all_tickers)}")
+
+    # --- Cleaning remains the same ---
+    cleaned_tickers = []
+    duplicates_found = 0
+    seen_tickers = set()
+    for ticker_with_exchange in all_tickers:
+        symbol = ticker_with_exchange # Default if no ':'
+        if ":" in ticker_with_exchange:
+            try:
+                symbol = ticker_with_exchange.split(":")[1]
+            except IndexError:
+                logging.warning(f"Could not parse symbol from '{ticker_with_exchange}', skipping.")
+                continue
+        
+        # Basic validation for typical stock symbols (alphanumeric, may contain '.')
+        if symbol and symbol.replace('.', '').isalnum(): 
+            if symbol not in seen_tickers:
+                cleaned_tickers.append(symbol)
+                seen_tickers.add(symbol)
+            else:
+                duplicates_found += 1
+        else:
+             logging.warning(f"Skipping potentially invalid symbol derived from '{ticker_with_exchange}': '{symbol}'")
+
+
+    # No need to sort here if you just need the list for processing later
+    # cleaned_tickers = sorted(list(set(cleaned_tickers))) # Deduplication now handled above
+    
+    if duplicates_found > 0:
+         logging.info(f"Removed {duplicates_found} duplicate tickers during cleaning.")
+    logging.info(f"Cleaned ticker list contains {len(cleaned_tickers)} unique symbols.")
+    return cleaned_tickers
+
+# ... rest of your script (get_financial_data_yf, screen_stock, main)
