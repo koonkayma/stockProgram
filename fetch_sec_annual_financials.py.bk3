@@ -36,11 +36,8 @@ DB_CONNECTION_STRING = os.environ.get(
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 COMPANY_FACTS_URL_TEMPLATE = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 
-# --- >>> UPDATED DESIRED_TAGS DICTIONARY <<< ---
 # Financial Tags to Extract (XBRL taxonomy:tag format)
-# Keys are CamelCase for mapping reference; DB columns will be snake_case.
 DESIRED_TAGS = {
-    # --- Existing Tags ---
     "Assets": "us-gaap:Assets",
     "Liabilities": "us-gaap:Liabilities",
     "StockholdersEquity": "us-gaap:StockholdersEquity",
@@ -69,58 +66,9 @@ DESIRED_TAGS = {
     "SharesDilutedWeightedAvg": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
     "OperatingCashFlow": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
     "CapitalExpenditures": "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",
-    "DepreciationAndAmortization": "us-gaap:DepreciationAndAmortization", # Combined D&A from CF Stmt
+    "DepreciationAndAmortization": "us-gaap:DepreciationAndAmortization",
     "DividendsPaid": "us-gaap:PaymentsOfDividends",
-
-    # --- New Tags Added ---
-    # I. Balance Sheet - Assets (More Detail)
-    "AssetsCurrent": "us-gaap:AssetsCurrent",
-    "MarketableSecuritiesCurrent": "us-gaap:MarketableSecuritiesCurrent",
-    "MarketableSecuritiesNoncurrent": "us-gaap:MarketableSecuritiesNoncurrent",
-    "Investments": "us-gaap:Investments",
-    "Goodwill": "us-gaap:Goodwill",
-    "IntangibleAssetsNetExcludingGoodwill": "us-gaap:IntangibleAssetsNetExcludingGoodwill",
-    "OtherAssetsCurrent": "us-gaap:OtherAssetsCurrent",
-    "OtherAssetsNoncurrent": "us-gaap:OtherAssetsNoncurrent",
-    "PrepaidExpenseCurrent": "us-gaap:PrepaidExpenseCurrent",
-    "DeferredTaxAssetsNetCurrent": "us-gaap:DeferredTaxAssetsNetCurrent",
-    "DeferredTaxAssetsNetNoncurrent": "us-gaap:DeferredTaxAssetsNetNoncurrent",
-
-    # II. Balance Sheet - Liabilities (More Detail)
-    "LiabilitiesCurrent": "us-gaap:LiabilitiesCurrent",
-    "DeferredRevenueCurrent": "us-gaap:DeferredRevenueCurrent",
-    "DeferredRevenueNoncurrent": "us-gaap:DeferredRevenueNoncurrent",
-    "IncomeTaxesPayable": "us-gaap:IncomeTaxesPayable",
-    "OtherLiabilitiesCurrent": "us-gaap:OtherLiabilitiesCurrent",
-    "OtherLiabilitiesNoncurrent": "us-gaap:OtherLiabilitiesNoncurrent",
-    "DeferredTaxLiabilitiesNoncurrent": "us-gaap:DeferredTaxLiabilitiesNoncurrent",
-    "CommitmentsAndContingencies": "us-gaap:CommitmentsAndContingencies", # NOTE: Often non-numeric text
-
-    # III. Balance Sheet - Equity (More Detail)
-    "RetainedEarningsAccumulatedDeficit": "us-gaap:RetainedEarningsAccumulatedDeficit",
-    "AccumulatedOtherComprehensiveIncomeLossNetOfTax": "us-gaap:AccumulatedOtherComprehensiveIncomeLossNetOfTax",
-    "CommonStockValue": "us-gaap:CommonStockValue",
-    "AdditionalPaidInCapital": "us-gaap:AdditionalPaidInCapital",
-    "TreasuryStockValue": "us-gaap:TreasuryStockValue",
-    "PreferredStockValue": "us-gaap:PreferredStockValue",
-    "NoncontrollingInterest": "us-gaap:NoncontrollingInterest",
-
-    # IV. Income Statement (More Detail)
-    "SellingGeneralAndAdministrativeExpense": "us-gaap:SellingGeneralAndAdministrativeExpense",
-    "ResearchAndDevelopmentExpense": "us-gaap:ResearchAndDevelopmentExpense",
-    "DepreciationExpense": "us-gaap:Depreciation", # From Income Stmt
-    "AmortizationOfIntangibleAssets": "us-gaap:AmortizationOfIntangibleAssets",
-    "InterestIncomeExpenseNet": "us-gaap:InterestIncomeExpenseNet",
-    "InterestIncome": "us-gaap:InterestIncome",
-    "OtherOperatingIncomeExpenseNet": "us-gaap:OtherOperatingIncomeExpenseNet",
-    "OtherNonoperatingIncomeExpense": "us-gaap:OtherNonoperatingIncomeExpense",
-    "IncomeLossFromContinuingOperationsAfterTax": "us-gaap:IncomeLossFromContinuingOperationsAfterTax",
-    "IncomeLossFromDiscontinuedOperationsNetOfTax": "us-gaap:IncomeLossFromDiscontinuedOperationsNetOfTax",
-    "ComprehensiveIncomeNetOfTax": "us-gaap:ComprehensiveIncomeNetOfTax",
-    "IncomeTaxExpenseBenefitContinuingOperations": "us-gaap:IncomeTaxExpenseBenefitContinuingOperations",
 }
-# --- >>> END UPDATED DICTIONARY <<< ---
-
 
 REQUEST_DELAY = 0.11
 
@@ -131,9 +79,9 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# --- Helper Functions --- (camel_to_snake, get_sec_data, parse_date, safe_decimal, safe_int_or_bigint - NO CHANGES NEEDED)
+# --- Helper Functions --- (camel_to_snake, get_sec_data, parse_date, safe_decimal, safe_int_or_bigint - KEEP AS IS)
 def camel_to_snake(name):
-    """Converts CamelCase names to snake_case."""
+    """Converts CamelCase names to snake_case for database column compatibility."""
     name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', name)
     return name.lower()
@@ -176,29 +124,19 @@ def safe_decimal(value):
     try:
         if isinstance(value, str): value = value.strip();
         if not value: return None
-        # Attempt direct Decimal conversion first, as it's stricter
-        try:
-            return Decimal(value)
-        except InvalidOperation:
-             # Fallback: Try converting via float for scientific notation, then back to Decimal via string
-             float_val = float(value)
-             return Decimal(str(float_val))
-    except (ValueError, TypeError, InvalidOperation) as e:
-        logging.warning(f"Could not convert '{value}' (type: {type(value)}) to Decimal: {e}")
-        return None
-
+        return Decimal(str(value))
+    except (ValueError, TypeError, InvalidOperation) as e: logging.warning(f"Could not convert '{value}' to Decimal: {e}"); return None
 
 def safe_int_or_bigint(value):
     if value is None: return None
     if isinstance(value, int): return value
     try:
-        # Use Decimal for robust intermediate conversion, then int()
         dec_val = Decimal(str(value).strip())
         if dec_val % 1 != 0: logging.debug(f"Truncating fractional part for integer conversion: {value}")
         return int(dec_val)
     except (InvalidOperation, ValueError, TypeError) as e: logging.warning(f"Could not convert '{value}' to integer: {e}"); return None
 
-# --- SQLAlchemy Model Definition --- (Dynamically updated by DESIRED_TAGS)
+# --- SQLAlchemy Model Definition ---
 Base = declarative_base()
 class AnnualData(Base):
     __tablename__ = 'sec_annual_data'
@@ -221,23 +159,19 @@ class AnnualData(Base):
         col_name = camel_to_snake(key)
         col_type = None
         comment_str = f'{key} ({full_tag})'
-        # Determine type based on snake_case naming convention
-        if 'shares' in col_name:
-            col_type = BigInteger().with_variant(INTEGER(unsigned=True), "mysql")
-        elif 'eps' in col_name:
-            col_type = DECIMAL(18, 6)
-        else: # Default to standard decimal for financial values
-            col_type = DECIMAL(28, 4)
+        if 'shares' in col_name: col_type = BigInteger().with_variant(INTEGER(unsigned=True), "mysql")
+        elif 'eps' in col_name: col_type = DECIMAL(18, 6)
+        else: col_type = DECIMAL(28, 4)
         _column_definitions[col_name] = Column(col_type, nullable=True, comment=comment_str)
-    locals().update(_column_definitions) # Add generated columns to the class
+    locals().update(_column_definitions)
 
-    # Calculated Free Cash Flow Column (defined explicitly)
+    # --- >>> NEW COLUMN DEFINITION ADDED TO MODEL <<< ---
     calculated_free_cash_flow = Column(DECIMAL(28, 4), nullable=True, comment='Calculated Free Cash Flow (OperatingCashFlow - CapitalExpenditures)')
+    # --- >>> END NEW COLUMN DEFINITION <<< ---
 
     # Audit timestamp column
     updated_at = Column(TIMESTAMP, nullable=False, server_default=func.now(), onupdate=func.now(), comment='Record last updated timestamp')
 
-    # Explicit Primary Key Constraint
     __table_args__ = (
         PrimaryKeyConstraint('cik', 'year', name='pk_sec_annual_data'),
         {'comment': 'Stores selected annual financial data derived from SEC EDGAR API'}
@@ -245,9 +179,10 @@ class AnnualData(Base):
     def __repr__(self): return f"<AnnualData(cik={self.cik}, year={self.year}, ticker='{self.ticker}')>"
 
 
-# --- Processing Function --- (process_company_facts - NO CHANGES NEEDED)
-# Extracts individual data points based on the (now expanded) DESIRED_TAGS
+# --- Processing Function --- (process_company_facts - KEEP AS IS)
+# This function extracts individual data points; calculation happens later.
 def process_company_facts(cik, company_data):
+    """Processes the raw JSON facts data for a single company."""
     # (Function content remains the same as in the previous full version)
     if not company_data or 'facts' not in company_data:
         logging.debug(f"CIK {cik}: No 'facts' key found.")
@@ -263,21 +198,16 @@ def process_company_facts(cik, company_data):
             tag_data = facts[taxonomy][tag_name]; units = tag_data.get('units')
             if not units: continue
             unit_key = None; is_share_metric = 'shares' in db_col_snake; is_eps_metric = 'eps' in db_col_snake
-            # Find appropriate unit key (USD, shares, USD/shares) or fallback
             if is_share_metric and 'shares' in units: unit_key = 'shares'
             elif is_eps_metric and 'USD/shares' in units: unit_key = 'USD/shares'
             elif not is_share_metric and not is_eps_metric and 'USD' in units: unit_key = 'USD'
-            elif units: first_unit = list(units.keys())[0]; unit_key = first_unit # Basic fallback
+            elif units: first_unit = list(units.keys())[0]; expected_unit_part = 'shares' if is_share_metric else ('USD/shares' if is_eps_metric else 'USD'); unit_key = first_unit; # Basic fallback
             if not unit_key or unit_key not in units: continue
-
             unit_data = units[unit_key]; yearly_data_for_tag = {}
-            for entry in unit_data: # Iterate through data points for the tag/unit
-                # Filter for annual data (FY) with required fields
+            for entry in unit_data:
                 if (entry.get('form') and entry.get('fp') == 'FY' and entry.get('fy') is not None):
                     fy = entry.get('fy'); filed_date = parse_date(entry.get('filed'))
-                    if not filed_date: continue # Skip if filing date invalid
-
-                    # Select best entry for the year (prefer 10-K, then latest filing)
+                    if not filed_date: continue
                     is_better_candidate = False
                     if fy not in yearly_data_for_tag: is_better_candidate = True
                     else:
@@ -285,20 +215,14 @@ def process_company_facts(cik, company_data):
                         if entry_form == '10-K' and current_form != '10-K': is_better_candidate = True
                         elif (entry_form == current_form) or (entry_form != '10-K' and current_form != '10-K'):
                            if filed_date > current_best['filed_date']: is_better_candidate = True
-
                     if is_better_candidate:
-                        # Parse value safely based on metric type (shares/eps vs decimal)
                         value_to_store = safe_int_or_bigint(entry.get('val')) if is_share_metric else safe_decimal(entry.get('val'))
-                        if value_to_store is not None: # Store only if parsing succeeds
+                        if value_to_store is not None:
                             yearly_data_for_tag[fy] = {'val': value_to_store, 'filed_date': filed_date, 'form': entry.get('form'), 'end_date': parse_date(entry.get('end'))}
                         else: logging.debug(f"CIK {cik}, Tag {full_tag}, FY {fy}: Value '{entry.get('val')}' invalid.")
-
-            # Integrate best data for this tag into the main results
             for year, data in yearly_data_for_tag.items():
                 if year not in annual_results: annual_results[year] = {'cik': cik, 'year': year}
-                # Store value using snake_case key
                 annual_results[year][db_col_snake] = data['val']
-                # Update metadata (form, dates) if this entry is from a better source
                 update_metadata = False
                 if 'form' not in annual_results[year]: update_metadata = True
                 else:
@@ -313,7 +237,7 @@ def process_company_facts(cik, company_data):
         except Exception as e: logging.error(f"Error processing tag {full_tag} (col: {db_col_snake}) for CIK {cik}: {type(e).__name__} - {e}", exc_info=False)
     return annual_results, company_name
 
-# --- Main Execution Block --- (NO CHANGES NEEDED in logic)
+# --- Main Execution Block ---
 if __name__ == "__main__":
     logging.info("="*60 + "\nStarting SEC Annual Financial Data Fetcher\n" + "="*60)
     logging.info(f"Using User-Agent: {USER_AGENT}")
@@ -324,7 +248,7 @@ if __name__ == "__main__":
     try:
         engine = create_engine(DB_CONNECTION_STRING, pool_recycle=3600, pool_pre_ping=True, echo=False)
         logging.info("Ensuring database table 'sec_annual_data' schema...")
-        Base.metadata.create_all(engine)
+        Base.metadata.create_all(engine) # Creates table if not exists, does nothing if exists
         Session = sessionmaker(bind=engine)
         db_session = Session()
         logging.info("Database connection successful and schema ensured.")
@@ -342,7 +266,7 @@ if __name__ == "__main__":
 
     # --- Process Ticker List ---
     all_companies = {}
-    try:
+    try: # Process based on observed SEC format (dict) or list fallback
         if isinstance(company_tickers_data, dict):
             all_companies = { str(info['cik_str']): {'title': info['title'], 'ticker': info['ticker']} for _, info in company_tickers_data.items() if isinstance(info, dict) and 'cik_str' in info and 'title' in info and 'ticker' in info }
         elif isinstance(company_tickers_data, list):
@@ -365,20 +289,19 @@ if __name__ == "__main__":
         ticker = company_info.get('ticker', 'N/A'); title_from_list = company_info.get('title', '').strip() or 'N/A'; processed_count += 1
         log_prefix = f"({processed_count}/{total_companies_to_process}) CIK {cik_str} ({ticker}):"
 
-        # ETA Calculation
-        if processed_count > 10:
+        # --- ETA Calculation ---
+        if processed_count > 10: # Show ETA after processing a few
             elapsed_time = time.time() - start_time; avg_time = elapsed_time / (processed_count -1)
             if avg_time > 0: eta_str = time.strftime("%Hh %Mm %Ss", time.gmtime(avg_time * (total_companies_to_process - processed_count))); logging.info(f"{log_prefix} Processing '{title_from_list}'... (ETA: {eta_str})")
             else: logging.info(f"{log_prefix} Processing '{title_from_list}'...")
         else: logging.info(f"{log_prefix} Processing '{title_from_list}'...")
 
-        # Fetch Company Facts
+        # --- Fetch Company Facts ---
         facts_url = COMPANY_FACTS_URL_TEMPLATE.format(cik=cik_str.zfill(10))
         company_facts_json = get_sec_data(facts_url, api_headers)
 
-        # Process Facts and Merge Data
+        # --- Process Facts and Merge Data ---
         if company_facts_json:
-            # process_company_facts now uses the expanded DESIRED_TAGS
             annual_data_by_year, entity_name_from_facts = process_company_facts(cik, company_facts_json)
             effective_company_name = entity_name_from_facts.strip() if entity_name_from_facts and entity_name_from_facts.strip() and entity_name_from_facts != 'N/A' else title_from_list
 
@@ -388,22 +311,25 @@ if __name__ == "__main__":
 
                 for year, data_for_year in sorted(annual_data_by_year.items()):
                     try:
-                        # Calculate Free Cash Flow
-                        ocf = data_for_year.get('operating_cash_flow')
-                        capex = data_for_year.get('capital_expenditures')
-                        calculated_fcf = ocf - capex if ocf is not None and capex is not None else None
-                        if calculated_fcf is None and (ocf is not None or capex is not None): # Log if only one component was found
-                             logging.debug(f"{log_prefix} Year {year}: Cannot calculate FCF (OCF: {ocf}, CapEx: {capex})")
+                        # --- >>> CALCULATE FREE CASH FLOW <<< ---
+                        ocf = data_for_year.get('operating_cash_flow') # Already a Decimal or None
+                        capex = data_for_year.get('capital_expenditures') # Already a Decimal or None
+                        calculated_fcf = None # Default to None
+                        if ocf is not None and capex is not None:
+                            # Standard FCF: OCF - CapEx. Assumes CapEx (Payments...) is positive.
+                            calculated_fcf = ocf - capex
+                            logging.debug(f"{log_prefix} Year {year}: OCF={ocf}, CapEx={capex}, FCF={calculated_fcf}")
+                        else:
+                            logging.debug(f"{log_prefix} Year {year}: Cannot calculate FCF (OCF: {ocf}, CapEx: {capex})")
+                        # --- >>> END FCF CALCULATION <<< ---
 
-                        # Prepare data for ORM, including new fields (if found) and calculated FCF
-                        # The keys in data_for_year are already the snake_case column names
+                        # Prepare data for ORM, including calculated FCF
                         record_data_for_orm = {
                             'ticker': ticker,
                             'company_name': effective_company_name,
-                            'calculated_free_cash_flow': calculated_fcf,
-                            **data_for_year # Unpack all snake_case keyed data from process_company_facts
+                            'calculated_free_cash_flow': calculated_fcf, # Add the calculated value
+                            **data_for_year # Unpack original data (will overwrite if keys overlap, safe here)
                         }
-                        # Clean up potential non-column keys
                         record_data_for_orm.pop('cik', None); record_data_for_orm.pop('year', None); record_data_for_orm.pop('val', None)
 
                         # Create object and merge
@@ -418,7 +344,7 @@ if __name__ == "__main__":
 
                     except Exception as e:
                         logging.error(f"{log_prefix} DB merge error Year {year}: {type(e).__name__} - {e}", exc_info=False)
-                        error_count += 1; db_session.rollback()
+                        error_count += 1; db_session.rollback() # Rollback on error
 
                 try: # Final commit for the CIK
                     db_session.commit()
