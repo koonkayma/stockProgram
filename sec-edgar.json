@@ -1,0 +1,274 @@
+{
+	"info": {
+		"_postman_id": "YOUR_UNIQUE_ID", // Postman generates this on import
+		"name": "SEC EDGAR API Examples",
+		"description": "Examples for testing various SEC EDGAR data APIs. \n\n**IMPORTANT:** You **MUST** update the `User-Agent` header in each request with your own company/name and email address (e.g., `MyCompanyName MyName my.email@example.com`).\n\nSee SEC documentation: https://www.sec.gov/edgar/sec-api-documentation",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "YOUR_EXPORTER_ID" // Postman adds this
+	},
+	"item": [
+		{
+			"name": "Submissions API",
+			"description": "Retrieve filing submission metadata for a specific CIK.\nRequires CIK zero-padded to 10 digits.",
+			"item": [
+				{
+					"name": "Get Submissions for Apple (CIK 320193)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "User-Agent",
+								"value": "YourCompanyName YourName your.email@example.com",
+								"type": "text",
+								"description": "REQUIRED by SEC: Replace with your actual info."
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "https://data.sec.gov/submissions/CIK0000320193.json",
+							"protocol": "https",
+							"host": [
+								"data",
+								"sec",
+								"gov"
+							],
+							"path": [
+								"submissions",
+								"CIK0000320193.json"
+							]
+						},
+						"description": "Gets filing metadata for Apple (CIK 320193). \nNote the CIK is zero-padded to 10 digits (`0000320193`). \n\nSee: https://www.sec.gov/edgar/sec-api-documentation"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Company Facts API",
+			"description": "Retrieve XBRL facts reported by a company.\nUses the integer CIK (no padding required).",
+			"item": [
+				{
+					"name": "Get Company Facts for Apple (CIK 320193)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "User-Agent",
+								"value": "YourCompanyName YourName your.email@example.com",
+								"type": "text",
+								"description": "REQUIRED by SEC: Replace with your actual info."
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "https://data.sec.gov/api/xbrl/companyfacts/CIK320193.json",
+							"protocol": "https",
+							"host": [
+								"data",
+								"sec",
+								"gov"
+							],
+							"path": [
+								"api",
+								"xbrl",
+								"companyfacts",
+								"CIK320193.json"
+							]
+						},
+						"description": "Retrieves all XBRL facts for Apple (CIK 320193). \nNote the CIK is *not* padded here.\n\nSee: https://www.sec.gov/edgar/sec-api-documentation"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Company Concept API",
+			"description": "Retrieve data for a specific XBRL concept (tag) for one company.\nRequires CIK (no padding), taxonomy, and tag.",
+			"item": [
+				{
+					"name": "Get Assets for Apple (CIK 320193)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "User-Agent",
+								"value": "YourCompanyName YourName your.email@example.com",
+								"type": "text",
+								"description": "REQUIRED by SEC: Replace with your actual info."
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "https://data.sec.gov/api/xbrl/companyconcept/CIK320193/us-gaap/Assets.json",
+							"protocol": "https",
+							"host": [
+								"data",
+								"sec",
+								"gov"
+							],
+							"path": [
+								"api",
+								"xbrl",
+								"companyconcept",
+								"CIK320193", // CIK (no padding)
+								"us-gaap",     // Taxonomy (e.g., us-gaap, ifrs-full)
+								"Assets.json" // XBRL Tag name + .json
+							]
+						},
+						"description": "Retrieves data points for the `Assets` tag (using the `us-gaap` taxonomy) specifically for Apple (CIK 320193).\n\nSee: https://www.sec.gov/edgar/sec-api-documentation"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Revenues for Apple (CIK 320193)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "User-Agent",
+								"value": "YourCompanyName YourName your.email@example.com",
+								"type": "text",
+								"description": "REQUIRED by SEC: Replace with your actual info."
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "https://data.sec.gov/api/xbrl/companyconcept/CIK320193/us-gaap/Revenues.json",
+							"protocol": "https",
+							"host": [
+								"data",
+								"sec",
+								"gov"
+							],
+							"path": [
+								"api",
+								"xbrl",
+								"companyconcept",
+								"CIK320193",
+								"us-gaap",
+								"Revenues.json" // Different Tag
+							]
+						},
+						"description": "Retrieves data points for the `Revenues` tag (using the `us-gaap` taxonomy) specifically for Apple (CIK 320193).\n\nSee: https://www.sec.gov/edgar/sec-api-documentation"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Frames API",
+			"description": "Retrieve data for a specific XBRL concept across ALL companies for a given time period.\nRequires taxonomy, tag, unit, and period (e.g., CY2023, CY2022Q1I).",
+			"item": [
+				{
+					"name": "Get Assets (USD) for all companies in CY2023",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "User-Agent",
+								"value": "YourCompanyName YourName your.email@example.com",
+								"type": "text",
+								"description": "REQUIRED by SEC: Replace with your actual info."
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "https://data.sec.gov/api/xbrl/frames/us-gaap/Assets/USD/CY2023.json",
+							"protocol": "https",
+							"host": [
+								"data",
+								"sec",
+								"gov"
+							],
+							"path": [
+								"api",
+								"xbrl",
+								"frames",
+								"us-gaap", // Taxonomy
+								"Assets",  // Tag
+								"USD",     // Unit of Measure
+								"CY2023.json" // Period (Calendar Year 2023)
+							]
+						},
+						"description": "Retrieves the `Assets` tag reported in `USD` by all `us-gaap` filers within the Calendar Year 2023 frame.\n\nNote: Period format can be complex (e.g., CY2023, CY2023Q1, CY2023Q2I for instant dates within Q2). See documentation.\n\nSee: https://www.sec.gov/edgar/sec-api-documentation"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Revenues (USD) for all companies in CY2023Q4",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "User-Agent",
+								"value": "YourCompanyName YourName your.email@example.com",
+								"type": "text",
+								"description": "REQUIRED by SEC: Replace with your actual info."
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "https://data.sec.gov/api/xbrl/frames/us-gaap/Revenues/USD/CY2023Q4.json",
+							"protocol": "https",
+							"host": [
+								"data",
+								"sec",
+								"gov"
+							],
+							"path": [
+								"api",
+								"xbrl",
+								"frames",
+								"us-gaap",
+								"Revenues", // Different Tag
+								"USD",
+								"CY2023Q4.json" // Different Period (4th Quarter 2023)
+							]
+						},
+						"description": "Retrieves the `Revenues` tag reported in `USD` by all `us-gaap` filers within the Calendar Quarter 4 2023 frame.\n\nSee: https://www.sec.gov/edgar/sec-api-documentation"
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [ // Optional: Define User-Agent at collection level
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+                "exec": [
+                    "// Uncomment below to set User-Agent for all requests in collection",
+                    "// pm.request.headers.upsert({",
+                    "//     key: 'User-Agent',",
+                    "//     value: 'YourCompanyName YourName your.email@example.com' ",
+                    "// });"
+                ]
+			}
+		}
+	]
+}
