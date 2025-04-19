@@ -1,0 +1,175 @@
+# --- Main Execution ---
+if __name__ == "__main__":
+    # ... (Keep all the code above this point, including imports, config, functions, model, DB connection, ticker fetching) ...
+
+    # --- Process Ticker List ---
+    all_companies = {}
+    try:
+        # The structure seems to be a dictionary where keys are indices ("0", "1", ...)
+        # and values are dictionaries containing 'cik_str', 'ticker', 'title'.
+        if isinstance(company_tickers_data, dict):
+            all_companies = {
+                str(info['cik_str']): {'title': info['title'], 'ticker': info['ticker']}
+                for key, info in company_tickers_data.items() if 'cik_str' in info and 'title' in info and 'ticker' in info
+            }
+        # Less common, but handle if it's a list of dictionaries directly
+        elif isinstance(company_tickers_data, list):
+             all_companies = {
+                str(info['cik_str']): {'title': info['title'], 'ticker': info['ticker']}
+                for info in company_tickers_data if 'cik_str' in info and 'title' in info and 'ticker' in info
+            }
+        else:
+            logging.error(f"Company tickers data is in an unexpected format: {type(company_tickers_data)}. Cannot process.")
+            if 'db_session' in locals() and db_session.is_active: db_session.close()
+            exit(1)
+        logging.info(f"Processed info for {len(all_companies)} companies from the ticker list.")
+    except Exception as e:
+        logging.error(f"Error processing the fetched company tickers data structure: {e}", exc_info=True)
+        if 'db_session' in locals() and db_session.is_active: db_session.close()
+        exit(1)
+
+    if not all_companies:
+        logging.warning("Ticker list was fetched but resulted in an empty company dictionary. Check processing logic or source data format.")
+        if 'db_session' in locals() and db_session.is_active: db_session.close()
+        exit(1)
+
+
+    # --- Process Each Company ---
+    processed_count = 0
+    error_count = 0
+    no_facts_count = 0
+    start_time = time.time()
+
+    # --- !!! MODIFICATION FOR TESTING: LIMIT TO 5 COMPANIES !!! ---
+    full_companies_list = list(all_companies.items())
+    limit_for_testing = 5
+    if len(full_companies_list) >= limit_for_testing:
+        companies_to_process = full_companies_list[:limit_for_testing]
+        logging.warning(f"--- TESTING MODE: Processing only the first {limit_for_testing} companies ---")
+    else:
+        companies_to_process = full_companies_list # Process all if less than 5 available
+        logging.warning(f"--- TESTING MODE: Fewer than {limit_for_testing} companies found ({len(full_companies_list)}), processing all available. ---")
+
+    total_companies_to_process = len(companies_to_process) # Use the length of the *limited* list
+    # --- !!! END OF MODIFICATION !!! ---
+
+    logging.info(f"Starting processing for {total_companies_to_process} selected companies...")
+
+    # Define standard headers for the data API calls (data.sec.gov)
+    api_headers = {
+        'User-Agent': USER_AGENT,
+        'Accept-Encoding': 'gzip, deflate', # Ask for compression
+        'Host': 'data.sec.gov' # Be explicit about the host
+    }
+
+    # The rest of the loop remains the same...
+    for cik_str, company_info in companies_to_process:
+        try:
+            cik = int(cik_str)
+        except ValueError:
+            logging.warning(f"Invalid CIK string found: '{cik_str}'. Skipping.")
+            processed_count += 1 # Count as processed even if skipped
+            continue
+
+        ticker = company_info.get('ticker', 'N/A') # Use N/A if ticker missing
+        title = company_info.get('title', '').strip() or 'N/A' # Use N/A if title missing/empty
+        processed_count += 1
+        log_prefix = f"({processed_count}/{total_companies_to_process}) CIK {cik_str} ({ticker}):" # Logging now reflects the limited total
+
+        # --- ETA Calculation ---
+        if processed_count > 1 and total_companies_to_process > 1: # Adjust condition slightly for small test runs
+            elapsed_time = time.time() - start_time
+            avg_time_per_company = elapsed_time / (processed_count -1) if processed_count > 1 else 0
+            if avg_time_per_company > 0:
+                 remaining_companies = total_companies_to_process - processed_count
+                 if remaining_companies > 0: # Only show ETA if there are remaining companies
+                    estimated_remaining_time = avg_time_per_company * remaining_companies
+                    eta_str = time.strftime("%H:%M:%S", time.gmtime(estimated_remaining_time))
+                    logging.info(f"{log_prefix} Processing '{title}'... (Est. Time Remaining for test run: {eta_str})")
+                 else:
+                    logging.info(f"{log_prefix} Processing '{title}'... (Last company in test run)")
+            else:
+                 logging.info(f"{log_prefix} Processing '{title}'...")
+        else:
+            logging.info(f"{log_prefix} Processing '{title}'...") # First or only company
+
+        # --- Fetch Company Facts ---
+        # Construct URL with zero-padded CIK
+        facts_url = COMPANY_FACTS_URL_TEMPLATE.format(cik=cik_str.zfill(10))
+        # Use standard get_sec_data which has verify=True by default for data.sec.gov
+        company_facts_json = get_sec_data(facts_url, api_headers) # verify=True is default
+
+        # --- Process Facts and Merge to DB ---
+        if company_facts_json:
+            # Process the facts data using the corrected function
+            annual_data_by_year, entity_name = process_company_facts(cik, company_facts_json)
+            effective_company_name = entity_name.strip() if entity_name and entity_name.strip() and entity_name != 'N/A' else title
+
+            if annual_data_by_year:
+                logging.info(f"{log_prefix} Found {len(annual_data_by_year)} years of potential data for '{effective_company_name}'. Merging into DB...")
+                years_processed_for_cik = 0
+                years_merged_count = 0
+                for year, data in sorted(annual_data_by_year.items()):
+                    years_processed_for_cik += 1
+                    try:
+                        record_data_for_year = {
+                            'ticker': ticker,
+                            'company_name': effective_company_name,
+                            'form': data.get('form'),
+                            'filed_date': data.get('filed_date'),
+                            'period_end_date': data.get('period_end_date'),
+                            **data
+                        }
+                        record_data_for_year.pop('cik', None)
+                        record_data_for_year.pop('year', None)
+                        record_data_for_year.pop('val', None)
+
+                        record_obj = AnnualData(cik=cik, year=year, **record_data_for_year)
+                        db_session.merge(record_obj)
+                        years_merged_count +=1
+
+                        if years_merged_count % 20 == 0:
+                            db_session.commit()
+
+                    except Exception as e:
+                        logging.error(f"{log_prefix} DB merge error Year {year} for '{effective_company_name}': {type(e).__name__} - {e}", exc_info=False)
+                        error_count += 1
+                        db_session.rollback()
+                try:
+                    db_session.commit() # Final commit for the current CIK
+                    # Modify log slightly for clarity in testing
+                    logging.info(f"{log_prefix} Finished merge for '{effective_company_name}'. Merged {years_merged_count} year(s) data.")
+                except Exception as e:
+                    logging.error(f"{log_prefix} Final commit error for CIK: {type(e).__name__} - {e}", exc_info=False)
+                    error_count += 1
+                    db_session.rollback()
+            else:
+                logging.info(f"{log_prefix} No relevant annual data points extracted for '{effective_company_name}' after processing facts.")
+                no_facts_count += 1
+        else:
+            logging.info(f"{log_prefix} No facts data retrieved from API for '{title}'.")
+            no_facts_count += 1
+
+        # --- Rate Limiting ---
+        time.sleep(REQUEST_DELAY)
+
+    # --- Final Summary ---
+    # (Keep the existing Final Summary and Cleanup code)
+    # ...
+
+    end_time = time.time()
+    total_duration = end_time - start_time
+    logging.info("-" * 60)
+    # Modify summary message for testing
+    logging.info(f"Finished TEST processing {processed_count} CIKs from list (limited to {total_companies_to_process}).")
+    logging.info(f"Total time: {time.strftime('%H:%M:%S', time.gmtime(total_duration))}.")
+    logging.info(f"  {no_facts_count} CIKs had no facts data retrieved or no relevant annual data extracted.")
+    logging.info(f"  Encountered {error_count} database errors during merge/commit.")
+    logging.info("-" * 60)
+
+    # --- Cleanup ---
+    if 'db_session' in locals() and db_session.is_active:
+        db_session.close()
+        logging.info("Database session closed.")
+    else:
+        logging.info("No active database session to close.")
