@@ -1,0 +1,347 @@
+# Filename: import_simfin_financials.py
+
+import simfin as sf
+import pandas as pd
+import mysql.connector
+import os
+import logging
+import time
+from dotenv import load_dotenv
+from decimal import Decimal, InvalidOperation
+import requests # Keep requests for ConnectionError handling
+
+# --- Configuration --- (Same as before)
+load_dotenv()
+SIMFIN_API_KEY = os.getenv('SIMFIN_API_KEY')
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_NAME = os.getenv('DB_NAME')
+DB_PORT = os.getenv('DB_PORT', 3306)
+TARGET_TICKERS = ['GOOGL', 'MSFT', 'AAPL']
+DATA_VARIANT = 'annual'
+MARKET = 'us'
+SIMFIN_DATA_DIR = os.path.expanduser('~/simfin_data/')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Mapping: Database Column Name -> Preferred SimFin DataFrame Column Name ---
+# This map now uses the desired FINAL column name after potential suffix handling
+# Values should be the NON-SUFFIXED SimFin names you expect the package to use.
+DB_COLUMN_MAP = {
+    # Metadata
+    'ticker': 'Ticker',
+    'simfin_id': 'SimFinId',
+    'fiscal_year': 'Fiscal Year',
+    'fiscal_period': 'Fiscal Period',
+    'report_date': 'Report Date',
+    'publish_date': 'Publish Date',
+    'currency': 'Currency',
+    # Income Statement (PL)
+    'revenue': 'Revenue',
+    'cost_of_revenue': 'Cost of Revenue',
+    'gross_profit': 'Gross Profit',
+    'research_development': 'Research & Development',
+    'selling_general_administrative': 'Selling, General & Administrative',
+    'other_operating_expenses': 'Other Operating Expenses',
+    'operating_expenses': 'Operating Expenses',
+    'operating_income_loss': 'Operating Income (Loss)', # EBIT
+    'non_operating_income_loss': 'Non-Operating Income (Loss)',
+    'interest_expense_net': 'Interest Expense, Net',
+    'pretax_income_loss': 'Pretax Income (Loss), Adj.',
+    'income_tax_expense_benefit': 'Income Tax Expense (Benefit)',
+    'net_income_loss': 'Net Income',
+    'net_income_common': 'Net Income Available to Common Shareholders',
+    'eps_basic': 'Earnings Per Share, Basic',
+    'eps_diluted': 'Earnings Per Share, Diluted',
+    'shares_basic': 'Weighted Average Basic Shares Outstanding',
+    'shares_diluted': 'Weighted Average Diluted Shares Outstanding',
+    # Balance Sheet (BS) - Assets
+    'cash_and_equivalents': 'Cash & Cash Equivalents',
+    'short_term_investments': 'Short Term Investments',
+    'accounts_receivable': 'Accounts & Notes Receivable',
+    'inventories': 'Inventories',
+    'total_current_assets': 'Total Current Assets',
+    'property_plant_equipment_net': 'Property, Plant & Equipment, Net',
+    'long_term_investments': 'Long Term Investments',
+    'goodwill_intangible_assets': 'Goodwill and Intangible Assets',
+    'total_non_current_assets': 'Total Non-Current Assets',
+    'total_assets': 'Total Assets',
+    # Balance Sheet (BS) - Liabilities
+    'accounts_payable': 'Accounts Payable',
+    'short_term_debt': 'Short Term Debt',
+    'accrued_liabilities': 'Accrued Liabilities',
+    'deferred_revenue_current': 'Deferred Revenue',
+    'total_current_liabilities': 'Total Current Liabilities',
+    'long_term_debt': 'Long Term Debt',
+    'deferred_revenue_non_current': 'Deferred Revenue',
+    'other_non_current_liabilities': 'Other Non-Current Liabilities',
+    'total_non_current_liabilities': 'Total Non-Current Liabilities',
+    'total_liabilities': 'Total Liabilities',
+    # Balance Sheet (BS) - Equity
+    'common_stock': 'Common Stock',
+    'retained_earnings': 'Retained Earnings',
+    'accumulated_other_comprehensive_income': 'Accumulated Other Comprehensive Income (Loss)',
+    'total_equity': 'Total Equity',
+    'total_liabilities_equity': 'Total Liabilities & Equity',
+    # Cash Flow (CF)
+    'cf_net_income': 'Net Income/Starting Line', # Often 'Net Income', handled below
+    'depreciation_amortization': 'Depreciation & Amortization',
+    'stock_based_compensation': 'Stock-Based Compensation',
+    'cash_from_operations': 'Net Cash from Operating Activities',
+    'capital_expenditures': 'Change in Fixed Assets & Intangibles',
+    'net_change_investments': 'Net Change in Investments',
+    'cash_acquisitions_divestitures': 'Cash from Acquisitions & Divestitures',
+    'cash_from_investing': 'Net Cash from Investing Activities',
+    'net_change_debt': 'Net Change in Debt',
+    'repurchase_common_stock': 'Repurchase of Common Stock',
+    'issuance_common_stock': 'Issuance of Common Stock',
+    'dividend_payments': 'Dividend Payments',
+    'cash_from_financing': 'Net Cash from Financing Activities',
+    'effect_exchange_rate_cash': 'Effect of Foreign Exchange Rates on Cash',
+    'net_change_cash': 'Net Change in Cash',
+    'cash_begin_period': 'Cash at Beginning of Period',
+    'cash_end_period': 'Cash at End of Period'
+}
+
+
+# --- Helper Functions --- (safe_decimal, calculate_fcf, insert_update_db remain the same)
+def safe_decimal(value):
+    if value is None or pd.isna(value): return None
+    if isinstance(value, (str)) and not value.strip(): return None
+    try:
+        if isinstance(value, float) and (value == float('inf') or value == float('-inf')): return None
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError): return None
+
+def calculate_fcf(cfo_val, capex_val):
+    if cfo_val is None or not isinstance(cfo_val, Decimal): return None
+    capex = capex_val if isinstance(capex_val, Decimal) else Decimal(0)
+    try: return cfo_val + capex
+    except Exception as e: logging.warning(f"Error calculating FCF (CFO: {cfo_val}, CapEx: {capex_val}): {e}"); return None
+
+def insert_update_db(db_cursor, data_dict):
+    columns = list(data_dict.keys())
+    if not columns: logging.warning("Attempted insert/update with empty data."); return False
+    unique_key_cols = ['simfin_id', 'fiscal_year', 'fiscal_period']
+    if not all(key in data_dict and data_dict[key] is not None for key in unique_key_cols):
+        logging.error(f"Missing/NULL unique keys: {data_dict.get('ticker')}, {data_dict.get('fiscal_year')}, {data_dict.get('fiscal_period')}. Skipping.")
+        return False
+    placeholders = ', '.join([f'%({col})s' for col in columns])
+    update_clause = ', '.join([f'`{col}` = VALUES(`{col}`)' for col in columns if col not in unique_key_cols])
+    escaped_columns = ', '.join([f'`{col}`' for col in columns])
+    if not update_clause: update_clause = "`last_updated` = CURRENT_TIMESTAMP"
+    sql = f"""INSERT INTO simfin_financial_data ({escaped_columns}) VALUES ({placeholders})
+              ON DUPLICATE KEY UPDATE {update_clause}, `last_updated` = CURRENT_TIMESTAMP;"""
+    try: db_cursor.execute(sql, data_dict); return True
+    except mysql.connector.Error as err: logging.error(f"DB error: {data_dict.get('ticker')} {data_dict.get('fiscal_year')} {data_dict.get('fiscal_period')}: {err}"); return False
+    except Exception as e: logging.error(f"Unexpected DB error: {data_dict.get('ticker')}: {e}", exc_info=True); return False
+
+# --- Main Execution Logic ---
+def main():
+    logging.info("Starting SimFin data import process using 'simfin' package...")
+    # --- Initialization & DB Connection (Same as before) ---
+    if not SIMFIN_API_KEY: logging.error("CRITICAL: SimFin API Key missing. Exiting."); return
+    if not all([DB_HOST, DB_USER, DB_PASSWORD, DB_NAME]): logging.error("CRITICAL: DB credentials missing. Exiting."); return
+    try:
+        logging.info(f"Initializing SimFin package..."); sf.set_api_key(SIMFIN_API_KEY)
+        if SIMFIN_DATA_DIR: os.makedirs(SIMFIN_DATA_DIR, exist_ok=True); sf.set_data_dir(SIMFIN_DATA_DIR); logging.info(f"SimFin data directory set to: {SIMFIN_DATA_DIR}")
+    except Exception as e: logging.error(f"CRITICAL: Failed to initialize SimFin: {e}", exc_info=True); return
+    db_connection = None; total_inserted_updated = 0; total_failed_records = 0
+    try:
+        logging.info(f"Connecting to database '{DB_NAME}' on {DB_HOST}:{DB_PORT}...");
+        db_connection = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, port=int(DB_PORT))
+        cursor = db_connection.cursor(dictionary=True); logging.info("Database connection successful.")
+
+        # --- Fetch Data (Same as before) ---
+        logging.info(f"Fetching ALL {DATA_VARIANT} financial data for market '{MARKET}'...")
+        try:
+            df_income_full = sf.load_income(variant=DATA_VARIANT, market=MARKET)
+            df_balance_full = sf.load_balance(variant=DATA_VARIANT, market=MARKET)
+            df_cashflow_full = sf.load_cashflow(variant=DATA_VARIANT, market=MARKET)
+            try: df_companies = sf.load_companies(market=MARKET, index='Ticker').loc[TARGET_TICKERS]
+            except: logging.debug("Loading all companies and filtering."); df_companies_full = sf.load_companies(market=MARKET, index='Ticker'); df_companies = df_companies_full.loc[df_companies_full.index.isin(TARGET_TICKERS)]
+            logging.info(f"Filtering data for target tickers: {TARGET_TICKERS}...")
+            ticker_index_level = 'Ticker'
+            df_income = df_income_full.loc[df_income_full.index.get_level_values(ticker_index_level).isin(TARGET_TICKERS)]
+            df_balance = df_balance_full.loc[df_balance_full.index.get_level_values(ticker_index_level).isin(TARGET_TICKERS)]
+            df_cashflow = df_cashflow_full.loc[df_cashflow_full.index.get_level_values(ticker_index_level).isin(TARGET_TICKERS)]
+            logging.info("Successfully fetched and filtered dataframes.")
+        except requests.exceptions.ConnectionError as e: logging.error(f"CRITICAL: Network error: {e}. Exiting."); return
+        except Exception as e: logging.error(f"CRITICAL: Error fetching/filtering: {e}", exc_info=True); return
+
+        # --- Process DataFrames ---
+        if df_income.empty and df_balance.empty and df_cashflow.empty:
+            logging.warning(f"All filtered dataframes empty for {TARGET_TICKERS}. No data.")
+        else:
+            # --- Join using suffixes ---
+            logging.info("Joining dataframes using suffixes...")
+            # Start with income (or balance if income is empty)
+            if not df_income.empty:
+                df_merged = df_income
+                if not df_balance.empty:
+                    df_merged = df_merged.join(df_balance, how='outer', lsuffix='_inc', rsuffix='_bal')
+                if not df_cashflow.empty:
+                    # Check if df_merged exists from previous step before joining cashflow
+                    if 'df_merged' in locals():
+                         df_merged = df_merged.join(df_cashflow, how='outer', rsuffix='_cf') # Only need rsuffix here
+                    else: # Only income was empty, join balance and cashflow
+                         df_merged = df_balance.join(df_cashflow, how='outer', lsuffix='_bal', rsuffix='_cf')
+
+            elif not df_balance.empty: # Income was empty, start with balance
+                 df_merged = df_balance
+                 if not df_cashflow.empty:
+                      df_merged = df_merged.join(df_cashflow, how='outer', lsuffix='_bal', rsuffix='_cf')
+            elif not df_cashflow.empty: # Only cashflow has data
+                 df_merged = df_cashflow # No suffixes needed
+            else: # All were empty, handled above
+                 df_merged = pd.DataFrame() # Should not reach here based on outer check
+
+            if df_merged.empty:
+                logging.warning("Merged dataframe is empty after joins.")
+            else:
+                logging.debug(f"Initial join complete. Columns: {df_merged.columns.tolist()}")
+
+                # --- Clean up suffixes and select preferred columns ---
+                final_cols = {} # Dict to store final data {db_col_name: series}
+                processed_cols = set() # Track columns already handled
+
+                # Prioritize source based on statement type for overlapping columns
+                col_priority = {'_cf', '_bal', '_inc', ''} # Check cashflow, then balance, then income, then unsuffixed
+
+                # Map metadata first (handle index levels)
+                df_merged = df_merged.reset_index()
+                metadata_map = {k: v for k, v in DB_COLUMN_MAP.items() if k in ['ticker', 'simfin_id', 'fiscal_year', 'fiscal_period', 'report_date', 'publish_date', 'currency', 'company_name']}
+
+                for db_col, df_col_base in metadata_map.items():
+                    found = False
+                    for suffix in [''] + list(col_priority): # Check unsuffixed first for index/metadata cols
+                        potential_col_name = f"{df_col_base}{suffix}"
+                        if potential_col_name in df_merged.columns and potential_col_name not in processed_cols:
+                            final_cols[db_col] = df_merged[potential_col_name]
+                            processed_cols.add(potential_col_name)
+                            found = True
+                            break
+                    if not found and df_col_base in df_merged.columns and df_col_base not in processed_cols: # Catch case where base name exists but wasn't suffixed
+                         final_cols[db_col] = df_merged[df_col_base]
+                         processed_cols.add(df_col_base)
+                         found = True
+
+                    # Special handling if metadata came from index
+                    if not found:
+                         if db_col == 'ticker' and 'Ticker' in df_merged.columns: final_cols[db_col] = df_merged['Ticker']; found = True; processed_cols.add('Ticker')
+                         if db_col == 'report_date' and 'Report Date' in df_merged.columns: final_cols[db_col] = df_merged['Report Date']; found = True; processed_cols.add('Report Date')
+                         # Add more index level mappings if needed (Fiscal Year etc.)
+
+                # Add Company Name from df_companies if needed
+                if 'company_name' not in final_cols and not df_companies.empty:
+                     # Ensure df_companies index is Ticker
+                     comp_idx_name = df_companies.index.name
+                     if comp_idx_name != 'Ticker': df_companies_reset = df_companies.reset_index().set_index('Ticker')
+                     else: df_companies_reset = df_companies
+                     # Map using the 'ticker' column already extracted
+                     if 'ticker' in final_cols:
+                         final_cols['company_name'] = final_cols['ticker'].map(df_companies_reset.get('Company Name', pd.Series(dtype=str)))
+
+                # Map financial columns, choosing the prioritized suffix
+                financial_map = {k: v for k, v in DB_COLUMN_MAP.items() if k not in metadata_map}
+                for db_col, df_col_base in financial_map.items():
+                    found = False
+                    for suffix in col_priority:
+                        potential_col_name = f"{df_col_base}{suffix}"
+                        if potential_col_name in df_merged.columns and potential_col_name not in processed_cols:
+                            final_cols[db_col] = df_merged[potential_col_name]
+                            processed_cols.add(potential_col_name) # Mark as used
+                            found = True
+                            break
+                    if not found and df_col_base in df_merged.columns and df_col_base not in processed_cols: # Catch unsuffixed base name
+                         final_cols[db_col] = df_merged[df_col_base]
+                         processed_cols.add(df_col_base)
+                         found = True
+
+                    if not found:
+                         # logging.debug(f"Column for '{db_col}' ('{df_col_base}') not found after suffix check.")
+                         final_cols[db_col] = None # Assign None if column not found at all
+
+
+                # Create the final DataFrame from the selected columns
+                df_final = pd.DataFrame(final_cols)
+                logging.info(f"Created final DataFrame for DB insertion. Shape: {df_final.shape}")
+                logging.debug(f"Final DF Columns: {df_final.columns.tolist()}")
+
+                # --- Iterate and Insert/Update Database ---
+                logging.info("Processing final data and updating database...")
+                processed_tickers = set()
+
+                for index, row in df_final.iterrows():
+                    # Convert row (Pandas Series) to dictionary for DB insertion
+                    db_data = {}
+                    valid_row = True
+                    for col in df_final.columns: # Iterate through columns in the final DataFrame
+                        # Map to DB column name (already done implicitly by final_cols keys)
+                        db_col_name = col
+                        # Convert to Decimal or handle specific types
+                        if db_col_name in ['simfin_id', 'fiscal_year']:
+                            try: db_data[db_col_name] = int(row[col]) if pd.notna(row[col]) else None
+                            except (ValueError, TypeError): db_data[db_col_name] = None; logging.warning(f"Invalid int value for {db_col_name}: {row[col]}")
+                        elif db_col_name in ['report_date', 'publish_date']:
+                            try: db_data[db_col_name] = pd.to_datetime(row[col], errors='coerce').date() if pd.notna(row[col]) else None
+                            except: db_data[db_col_name] = None # Handle parsing errors
+                        elif db_col_name not in ['ticker', 'company_name', 'fiscal_period', 'currency']: # Assume others are financial
+                            db_data[db_col_name] = safe_decimal(row[col])
+                        else: # Handle string/other types directly
+                            db_data[db_col_name] = row[col] if pd.notna(row[col]) else None
+
+                    # Ensure essential keys are present after processing
+                    if db_data.get('ticker') is None:
+                        logging.warning(f"Skipping row {index} due to missing Ticker after processing.")
+                        total_failed_records += 1
+                        continue
+
+                    processed_tickers.add(db_data['ticker'])
+
+                    # Re-check unique keys are not None before DB op
+                    if db_data.get('simfin_id') is None or db_data.get('fiscal_year') is None or db_data.get('fiscal_period') is None:
+                         logging.warning(f"Skipping DB insert for {db_data.get('ticker')} row {index} due to missing SimFinId/Year/Period.")
+                         total_failed_records += 1
+                         continue
+
+                    # Calculate FCF using the processed Decimal values
+                    db_data['free_cash_flow'] = calculate_fcf(db_data.get('cash_from_operations'), db_data.get('capital_expenditures'))
+
+                    # Insert / Update DB
+                    if insert_update_db(cursor, db_data):
+                        total_inserted_updated += 1
+                    else:
+                        total_failed_records += 1
+
+                # --- Commit and Final Logs ---
+                logging.info(f"Committing database changes...")
+                db_connection.commit()
+                logging.info(f"Database commit successful.")
+
+        logging.info(f"--- Data Import Complete ---")
+        logging.info(f"Tickers processed: {len(processed_tickers)} / {len(TARGET_TICKERS)}")
+        logging.info(f"Total records successfully inserted/updated in DB: {total_inserted_updated}")
+        logging.info(f"Total records failed during DB operation: {total_failed_records}")
+
+    except mysql.connector.Error as err:
+        logging.error(f"CRITICAL: Database connection or operational error: {err}. Process halted.")
+        if db_connection and db_connection.is_connected():
+            try: db_connection.rollback(); logging.info("Attempted database rollback.")
+            except: logging.error("Rollback attempt failed.")
+    except Exception as e:
+        logging.error(f"CRITICAL: An unexpected error occurred in main function: {e}", exc_info=True)
+    finally:
+        # Close the database connection
+        if db_connection and db_connection.is_connected():
+            try:
+                cursor.close()
+                db_connection.close()
+                logging.info("Database connection closed.")
+            except mysql.connector.Error as close_err:
+                logging.error(f"Error closing database connection: {close_err}")
+        else:
+            logging.info("Database connection was not established or already closed.")
+
+if __name__ == "__main__":
+    main()
