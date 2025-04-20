@@ -1,0 +1,514 @@
+# Filename: import_simfin_financials.py
+
+import requests
+import mysql.connector
+import os
+import logging
+import time
+from dotenv import load_dotenv
+from decimal import Decimal, InvalidOperation
+from collections import defaultdict
+
+# --- Configuration ---
+load_dotenv() # Load variables from .env file
+
+SIMFIN_API_KEY = os.getenv('SIMFIN_API_KEY')
+SIMFIN_BASE_URL = "https://simfin.com/api/v2/"
+
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_NAME = os.getenv('DB_NAME')
+DB_PORT = os.getenv('DB_PORT', 3306) # Read port from .env, default to 3306
+
+# List of tickers you want to import data for
+TARGET_TICKERS = ['GOOGL', 'MSFT', 'AAPL'] # Add more tickers as needed
+
+# Rate limiting delay (seconds) between processing each company
+# Increase if you hit 429 Too Many Requests errors
+API_DELAY_PER_COMPANY = 3 # Seconds
+
+# Setup basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Mapping: Database Column Name -> SimFin Standardized Field Name ---
+# !! CRITICAL !!: Verify these SimFin names against their documentation or actual API responses.
+# These might change or vary slightly. Using common standardized names here.
+SIMFIN_FIELD_MAP = {
+    # Metadata (handled separately)
+    # Income Statement (PL)
+    'revenue': 'Revenue',
+    'cost_of_revenue': 'Cost of Revenue',
+    'gross_profit': 'Gross Profit',
+    'research_development': 'Research & Development',
+    'selling_general_administrative': 'Selling, General & Administrative',
+    'other_operating_expenses': 'Other Operating Expenses', # Might not always exist
+    'operating_expenses': 'Operating Expenses',
+    'operating_income_loss': 'Operating Income (Loss)', # EBIT
+    'non_operating_income_loss': 'Non-Operating Income (Loss)',
+    'interest_expense_net': 'Interest Expense, Net',
+    'pretax_income_loss': 'Pretax Income (Loss)',
+    'income_tax_expense_benefit': 'Income Tax Expense (Benefit)',
+    'net_income_loss': 'Net Income (Loss)',
+    'net_income_common': 'Net Income Available to Common Shareholders', # Check specific SimFin name (Might just be 'Net Income')
+    'eps_basic': 'Earnings Per Share, Basic',
+    'eps_diluted': 'Earnings Per Share, Diluted',
+    'shares_basic': 'Weighted Average Shares Outstanding, Basic',
+    'shares_diluted': 'Weighted Average Shares Outstanding, Diluted',
+
+    # Balance Sheet (BS) - Assets
+    'cash_and_equivalents': 'Cash & Cash Equivalents',
+    'short_term_investments': 'Short Term Investments',
+    'accounts_receivable': 'Accounts & Notes Receivable', # SimFin might combine these
+    'inventories': 'Inventories',
+    'total_current_assets': 'Total Current Assets',
+    'property_plant_equipment_net': 'Property, Plant & Equipment, Net',
+    'long_term_investments': 'Long Term Investments',
+    'goodwill_intangible_assets': 'Goodwill and Intangible Assets',
+    'total_non_current_assets': 'Total Non-Current Assets',
+    'total_assets': 'Total Assets',
+
+    # Balance Sheet (BS) - Liabilities
+    'accounts_payable': 'Accounts Payable',
+    'short_term_debt': 'Short Term Debt',
+    'accrued_liabilities': 'Accrued Liabilities',
+    'deferred_revenue_current': 'Deferred Revenue', # SimFin might only have one Deferred Revenue field
+    'total_current_liabilities': 'Total Current Liabilities',
+    'long_term_debt': 'Long Term Debt',
+    'deferred_revenue_non_current': 'Deferred Revenue', # Map to same if only one exists
+    'other_non_current_liabilities': 'Other Non-Current Liabilities',
+    'total_non_current_liabilities': 'Total Non-Current Liabilities',
+    'total_liabilities': 'Total Liabilities',
+
+    # Balance Sheet (BS) - Equity
+    'common_stock': 'Common Stock',
+    'retained_earnings': 'Retained Earnings',
+    'accumulated_other_comprehensive_income': 'Accumulated Other Comprehensive Income (Loss)',
+    'total_equity': 'Total Equity',
+    'total_liabilities_equity': 'Total Liabilities & Equity',
+
+    # Cash Flow (CF)
+    'cf_net_income': 'Net Income/Starting Line', # Check SimFin name (Often just 'Net Income')
+    'depreciation_amortization': 'Depreciation & Amortization',
+    'stock_based_compensation': 'Stock-Based Compensation',
+    'cash_from_operations': 'Net Cash from Operating Activities',
+    'capital_expenditures': 'Change in Fixed Assets & Intangibles', # Common SimFin name for CapEx (often negative)
+    'net_change_investments': 'Net Change in Investments', # Check SimFin name
+    'cash_acquisitions_divestitures': 'Cash from Acquisitions & Divestitures', # Check SimFin name
+    'cash_from_investing': 'Net Cash from Investing Activities',
+    'net_change_debt': 'Net Change in Debt',
+    'repurchase_common_stock': 'Repurchase of Common Stock', # Check SimFin name
+    'issuance_common_stock': 'Issuance of Common Stock', # Check SimFin name
+    'dividend_payments': 'Dividend Payments',
+    'cash_from_financing': 'Net Cash from Financing Activities',
+    'effect_exchange_rate_cash': 'Effect of Foreign Exchange Rates on Cash', # Check SimFin name
+    'net_change_cash': 'Net Change in Cash',
+    'cash_begin_period': 'Cash at Beginning of Period',
+    'cash_end_period': 'Cash at End of Period'
+}
+
+# --- Helper Functions ---
+
+def get_simfin_id(ticker, api_key):
+    """Fetches the SimFin ID and Company Name for a given ticker."""
+    url = f"{SIMFIN_BASE_URL}companies/id/ticker/{ticker}"
+    params = {'api-key': api_key}
+    try:
+        response = requests.get(url, params=params, timeout=30) # Added timeout
+        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        data = response.json()
+        if data and isinstance(data, list) and 'simId' in data[0]:
+            sim_id = data[0]['simId']
+            company_name = data[0].get('companyName', ticker) # Use ticker if name missing
+            logging.info(f"Found SimFin ID {sim_id} ({company_name}) for ticker {ticker}")
+            return sim_id, company_name
+        else:
+            logging.warning(f"SimFin ID not found for ticker {ticker}. Response: {data}")
+            return None, ticker
+    except requests.exceptions.Timeout:
+        logging.error(f"API request timed out for getting SimFin ID for {ticker}")
+        return None, ticker
+    except requests.exceptions.RequestException as e:
+        logging.error(f"API request failed for getting SimFin ID for {ticker}: {e}")
+        return None, ticker
+    except Exception as e:
+        logging.error(f"Error processing SimFin ID response for {ticker}: {e}")
+        return None, ticker
+
+def get_financial_statements(simfin_id, api_key, statement_type, period="fy"):
+    """Fetches a specific type of financial statement from SimFin."""
+    if not simfin_id:
+        return None
+    url = f"{SIMFIN_BASE_URL}companies/id/{simfin_id}/statements"
+    params = {
+        'statement': statement_type, # pl, bs, cf
+        'period': period,
+        'fyear': '', # All available years (respects free tier limits)
+        'api-key': api_key
+    }
+    logging.debug(f"Requesting URL: {url} with params: statement={statement_type}, period={period}")
+    try:
+        response = requests.get(url, params=params, timeout=60) # Longer timeout for data
+        response.raise_for_status()
+        data = response.json()
+
+        # Check primary data structure
+        if not data or not isinstance(data, list):
+             logging.warning(f"Unexpected API response structure (not a list) for {statement_type.upper()} SimFin ID {simfin_id}. Response: {data}")
+             return None
+
+        statement_info = data[0] # Expecting a list with one element containing statement data
+
+        if not statement_info or not isinstance(statement_info, dict):
+            logging.warning(f"Unexpected API response structure (list element not a dict) for {statement_type.upper()} SimFin ID {simfin_id}. Response: {statement_info}")
+            return None
+
+        if statement_info.get('found', False):
+            if 'columns' in statement_info and 'data' in statement_info:
+                logging.info(f"Successfully fetched {statement_type.upper()} for SimFin ID {simfin_id}, period {period}")
+                return statement_info # Return the dict containing 'columns' and 'data'
+            else:
+                logging.warning(f"API reported found=true but missing 'columns' or 'data' for {statement_type.upper()} SimFin ID {simfin_id}.")
+                return None
+        else:
+             # Check if 'error' key exists for more info
+             error_msg = statement_info.get('error', 'API reported not found.')
+             logging.warning(f"No {statement_type.upper()} statements found for SimFin ID {simfin_id}. Reason: {error_msg}")
+             return None
+
+    except requests.exceptions.Timeout:
+        logging.error(f"API request timed out fetching {statement_type.upper()} for SimFin ID {simfin_id}")
+        return None
+    except requests.exceptions.RequestException as e:
+        # Log status code if available
+        status_code = e.response.status_code if e.response is not None else 'N/A'
+        logging.error(f"API request failed (Status: {status_code}) fetching {statement_type.upper()} for SimFin ID {simfin_id}: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"Error processing {statement_type.upper()} response for SimFin ID {simfin_id}: {e}", exc_info=True) # Log traceback
+        return None
+
+def safe_decimal(value, precision_ignored=None): # precision argument kept for compatibility but not used here
+    """Converts a value to Decimal, handling None and invalid operations. Returns None on failure."""
+    if value is None:
+        return None
+    # Handle empty strings or other non-numeric types gracefully
+    if isinstance(value, (str)) and not value.strip():
+        return None
+    try:
+        return Decimal(value)
+    except (InvalidOperation, TypeError, ValueError):
+        # logging.debug(f"Could not convert '{value}' (type: {type(value)}) to Decimal.")
+        return None
+
+def calculate_fcf(cfo_val, capex_val):
+    """Calculates Free Cash Flow safely from Decimal values. Returns None if CFO is missing or calculation fails."""
+    if cfo_val is None or not isinstance(cfo_val, Decimal): # Cannot calculate FCF without valid CFO
+        return None
+    # Treat missing or invalid CapEx as 0 (it's usually negative, representing an outflow)
+    capex = capex_val if isinstance(capex_val, Decimal) else Decimal(0)
+    try:
+        # FCF = Cash From Operations + Capital Expenditures (where CapEx is typically negative)
+        return cfo_val + capex
+    except Exception as e:
+        logging.warning(f"Error calculating FCF (CFO: {cfo_val}, CapEx: {capex_val}): {e}")
+        return None
+
+def parse_statement_data(statement_json, simfin_map):
+    """Parses SimFin statement JSON into a dict keyed by (year, period)."""
+    if not statement_json or 'columns' not in statement_json or 'data' not in statement_json:
+        logging.debug("parse_statement_data received invalid or empty input.")
+        return {}
+
+    parsed_data = defaultdict(dict)
+    columns = statement_json['columns']
+    data_rows = statement_json['data']
+    logging.debug(f"Parsing statement with columns: {columns}")
+
+    try:
+        # Find indices of core metadata and financial columns from the SIMFIN_FIELD_MAP
+        col_indices = {'Fiscal Year': -1, 'Fiscal Period': -1, 'Report Date': -1, 'Publish Date': -1, 'Currency': -1}
+        financial_col_indices = {} # Map db_col_name -> index in API response
+
+        # Create reverse map for quick lookup: SimFin Name -> DB Name
+        reverse_simfin_map = {v: k for k, v in simfin_map.items()}
+
+        for i, api_col_name in enumerate(columns):
+            if api_col_name in col_indices: # Check if it's a standard metadata column
+                col_indices[api_col_name] = i
+            elif api_col_name in reverse_simfin_map: # Check if it's a financial column we need
+                db_col_name = reverse_simfin_map[api_col_name]
+                financial_col_indices[db_col_name] = i
+
+        # Log which expected columns were found/missing in the API response
+        found_db_cols = set(financial_col_indices.keys())
+        expected_db_cols = set(simfin_map.keys())
+        missing_db_cols = expected_db_cols - found_db_cols
+        if missing_db_cols:
+             logging.debug(f"Columns missing in API response (won't be populated): {missing_db_cols}")
+        # logging.debug(f"Mapped financial column indices: {financial_col_indices}")
+
+
+        # Check if essential metadata columns were found
+        if col_indices['Fiscal Year'] == -1 or col_indices['Fiscal Period'] == -1:
+            logging.error(f"Essential columns 'Fiscal Year' or 'Fiscal Period' not found in statement. Columns: {columns}")
+            return {}
+
+        for row_num, row in enumerate(data_rows):
+             # Basic check for row length consistency
+             if len(row) != len(columns):
+                 logging.warning(f"Row {row_num+1} length mismatch ({len(row)}) expected ({len(columns)}). Skipping row.")
+                 continue
+
+             year_raw = row[col_indices['Fiscal Year']]
+             period = row[col_indices['Fiscal Period']]
+
+             # Validate Year and Period
+             try:
+                 year = int(year_raw) if year_raw is not None else None
+             except (ValueError, TypeError):
+                 logging.warning(f"Invalid Fiscal Year '{year_raw}' in row {row_num+1}. Skipping row.")
+                 continue
+             if not year or not period: # Skip rows without valid year/period
+                 logging.debug(f"Skipping row {row_num+1} due to missing year or period.")
+                 continue
+
+             key = (year, period)
+
+             # Store metadata once per year/period key
+             if 'report_date' not in parsed_data[key]:
+                 parsed_data[key]['report_date'] = row[col_indices['Report Date']] if col_indices['Report Date'] != -1 else None
+                 parsed_data[key]['publish_date'] = row[col_indices['Publish Date']] if col_indices['Publish Date'] != -1 else None
+                 parsed_data[key]['currency'] = row[col_indices['Currency']] if col_indices['Currency'] != -1 else None
+
+             # Store financial data using safe_decimal
+             for db_col, index in financial_col_indices.items():
+                 raw_value = row[index]
+                 parsed_data[key][db_col] = safe_decimal(raw_value)
+
+    except IndexError:
+        logging.error("IndexError during statement parsing. Column indices might be wrong or data row malformed.", exc_info=True)
+        return {}
+    except Exception as e:
+        logging.error(f"Unexpected error during statement parsing: {e}", exc_info=True)
+        return {}
+
+    logging.debug(f"Finished parsing statement, found data for {len(parsed_data)} periods.")
+    return parsed_data
+
+
+def insert_update_db(db_cursor, data_dict):
+    """Inserts or updates a complete row in the MariaDB table."""
+    # Filter out keys with None values if you prefer not to insert/update them
+    # filtered_data = {k: v for k, v in data_dict.items() if v is not None}
+    # However, updating with NULL might be desired behavior, so we use the full dict.
+    filtered_data = data_dict # Using full dict for now
+
+    # Build the SQL statement dynamically
+    columns = list(filtered_data.keys())
+    if not columns:
+        logging.warning("Attempted to insert/update with empty data dictionary.")
+        return False
+
+    placeholders = ', '.join([f'%({col})s' for col in columns])
+    # Ensure we don't try to update the unique key components in the UPDATE clause
+    update_clause = ', '.join([f'`{col}` = VALUES(`{col}`)' for col in columns if col not in ['ticker', 'simfin_id', 'fiscal_year', 'fiscal_period']])
+
+    # Escape column names with backticks for safety (handles reserved words)
+    escaped_columns = ', '.join([f'`{col}`' for col in columns])
+
+    # Check if there are columns to update
+    if not update_clause:
+         # This happens if only the primary/unique key columns are provided
+         # We can choose to just insert or skip if exists
+         # For now, let's construct a minimal update or handle it as an error
+         logging.warning(f"No columns to update for {filtered_data.get('ticker')} {filtered_data.get('fiscal_year')} {filtered_data.get('fiscal_period')}. Inserting only.")
+         # Minimal update to trigger last_updated (if desired)
+         update_clause = "last_updated = CURRENT_TIMESTAMP" # Or handle differently
+
+
+    sql = f"""
+    INSERT INTO simfin_financial_data ({escaped_columns})
+    VALUES ({placeholders})
+    ON DUPLICATE KEY UPDATE {update_clause}, `last_updated` = CURRENT_TIMESTAMP;
+    """
+
+    try:
+        # logging.debug(f"Executing SQL: {sql} with data: {filtered_data}")
+        db_cursor.execute(sql, filtered_data)
+        return True
+    except mysql.connector.Error as err:
+        logging.error(f"Database error for {filtered_data.get('ticker')} {filtered_data.get('fiscal_year')} {filtered_data.get('fiscal_period')}: {err}")
+        logging.debug(f"Data causing error: {filtered_data}") # Log data on error
+        # Optionally log the statement that failed (be careful with sensitive data)
+        # logging.debug(f"Failed SQL statement: {db_cursor.statement}")
+        return False
+    except Exception as e:
+         logging.error(f"Unexpected error during DB insert/update for {filtered_data.get('ticker')}: {e}", exc_info=True)
+         return False
+
+# --- Main Execution Logic ---
+
+def main():
+    """Main function to fetch data and store it in the database."""
+    logging.info("Starting SimFin data import process...")
+    if not SIMFIN_API_KEY:
+        logging.error("CRITICAL: SimFin API Key not found in environment variables (.env file). Exiting.")
+        return
+    if not all([DB_HOST, DB_USER, DB_PASSWORD, DB_NAME]):
+        logging.error("CRITICAL: Database credentials missing in environment variables (.env file). Exiting.")
+        return
+
+    db_connection = None
+    total_inserted_updated = 0
+    total_failed_records = 0 # Count records that failed DB operation
+    total_failed_tickers = 0 # Count tickers skipped entirely
+
+    try:
+        logging.info(f"Connecting to database '{DB_NAME}' on {DB_HOST}:{DB_PORT}...")
+        db_connection = mysql.connector.connect(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            port=int(DB_PORT) # Ensure port is an integer
+        )
+        cursor = db_connection.cursor(dictionary=True) # Using dictionary cursor can sometimes be less performant than default tuple cursor
+        logging.info("Database connection successful.")
+
+        for ticker in TARGET_TICKERS:
+            logging.info(f"--- Processing Ticker: {ticker} ---")
+            simfin_id, company_name = get_simfin_id(ticker, SIMFIN_API_KEY)
+            if not simfin_id:
+                total_failed_tickers += 1
+                time.sleep(1) # Small delay even on failure
+                continue # Skip to next ticker
+
+            # Fetch all three statements (Annual 'fy' data)
+            period_type = 'fy' # Currently only fetching annual data
+            logging.info(f"Fetching {period_type.upper()} statements for {ticker} (ID: {simfin_id})...")
+
+            # Introduce delays between major API calls for a single ticker too
+            pl_data_raw = get_financial_statements(simfin_id, SIMFIN_API_KEY, "pl", period=period_type)
+            time.sleep(1.5) # Delay between statement fetches
+            bs_data_raw = get_financial_statements(simfin_id, SIMFIN_API_KEY, "bs", period=period_type)
+            time.sleep(1.5)
+            cf_data_raw = get_financial_statements(simfin_id, SIMFIN_API_KEY, "cf", period=period_type)
+
+            # Basic check if we got *any* data before parsing
+            if not pl_data_raw and not bs_data_raw and not cf_data_raw:
+                 logging.warning(f"No statement data returned from API for {ticker}. Skipping.")
+                 total_failed_tickers += 1
+                 time.sleep(API_DELAY_PER_COMPANY) # Still wait before next ticker
+                 continue
+
+            # Parse data into dictionaries keyed by (year, period)
+            logging.info(f"Parsing statement data for {ticker}...")
+            pl_data = parse_statement_data(pl_data_raw, SIMFIN_FIELD_MAP)
+            bs_data = parse_statement_data(bs_data_raw, SIMFIN_FIELD_MAP)
+            cf_data = parse_statement_data(cf_data_raw, SIMFIN_FIELD_MAP)
+
+            # Determine the set of all unique (year, period) keys across all statements
+            all_periods = set(pl_data.keys()) | set(bs_data.keys()) | set(cf_data.keys())
+
+            if not all_periods:
+                 logging.warning(f"No valid periods found after parsing statements for {ticker}. Skipping.")
+                 total_failed_tickers += 1
+                 time.sleep(API_DELAY_PER_COMPANY)
+                 continue
+
+            logging.info(f"Found {len(all_periods)} unique {period_type.upper()} periods to process for {ticker}.")
+
+            # Merge data for each unique year/period found
+            company_records_processed = 0
+            company_records_failed = 0
+            for year, period in sorted(list(all_periods)): # Process chronologically
+                logging.debug(f"Merging data for {ticker} - {year} - {period}")
+                merged_data = {
+                    'ticker': ticker,
+                    'simfin_id': simfin_id,
+                    'company_name': company_name,
+                    'fiscal_year': year,
+                    'fiscal_period': period,
+                }
+
+                # Get data from each parsed dict, default to empty dict if key missing
+                period_pl_data = pl_data.get((year, period), {})
+                period_bs_data = bs_data.get((year, period), {})
+                period_cf_data = cf_data.get((year, period), {})
+
+                # Combine metadata (take from CF if available, else PL, else BS)
+                merged_data['report_date'] = period_cf_data.get('report_date') or period_pl_data.get('report_date') or period_bs_data.get('report_date')
+                merged_data['publish_date'] = period_cf_data.get('publish_date') or period_pl_data.get('publish_date') or period_bs_data.get('publish_date')
+                merged_data['currency'] = period_cf_data.get('currency') or period_pl_data.get('currency') or period_bs_data.get('currency')
+
+
+                # Add financial data, preferring data from the 'correct' statement type
+                merged_data.update(period_pl_data)
+                merged_data.update(period_bs_data)
+                merged_data.update(period_cf_data) # CF data added last, possibly overwriting metadata if inconsistent
+
+
+                # --- Calculate FCF ---
+                # Use the specific fields intended for FCF calculation
+                cfo_for_fcf = merged_data.get('cash_from_operations') # Value from CF statement
+                capex_for_fcf = merged_data.get('capital_expenditures') # Value from CF statement
+                merged_data['free_cash_flow'] = calculate_fcf(cfo_for_fcf, capex_for_fcf)
+
+                # --- Insert / Update Database ---
+                if insert_update_db(cursor, merged_data):
+                    company_records_processed += 1
+                else:
+                    company_records_failed += 1
+                    # Error is already logged inside insert_update_db
+
+            logging.info(f"Finished processing {ticker}. Records inserted/updated: {company_records_processed}, Failed DB operations: {company_records_failed}")
+            total_inserted_updated += company_records_processed
+            total_failed_records += company_records_failed
+
+            # Commit after each company to save progress incrementally
+            try:
+                 logging.info(f"Committing changes for {ticker}...")
+                 db_connection.commit()
+            except mysql.connector.Error as commit_err:
+                 logging.error(f"Database commit failed for {ticker}: {commit_err}. Changes may be lost.")
+                 # Consider attempting rollback or handling more robustly
+                 db_connection.rollback()
+
+
+            logging.info(f"Waiting {API_DELAY_PER_COMPANY}s before next ticker...")
+            time.sleep(API_DELAY_PER_COMPANY) # Wait before processing the next company
+
+
+        logging.info(f"--- Processing Complete ---")
+        logging.info(f"Total tickers processed (attempted): {len(TARGET_TICKERS)}")
+        logging.info(f"Total tickers skipped (no ID or no data): {total_failed_tickers}")
+        logging.info(f"Total records successfully inserted/updated in DB: {total_inserted_updated}")
+        logging.info(f"Total records failed during DB operation: {total_failed_records}")
+
+    except mysql.connector.Error as err:
+        logging.error(f"CRITICAL: Database connection or operational error: {err}. Process halted.")
+        # Attempt rollback if connection exists
+        if db_connection and db_connection.is_connected():
+            try:
+                db_connection.rollback()
+                logging.info("Attempted database rollback due to critical error.")
+            except mysql.connector.Error as rb_err:
+                logging.error(f"Rollback attempt failed: {rb_err}")
+
+    except Exception as e:
+        logging.error(f"CRITICAL: An unexpected error occurred in main function: {e}", exc_info=True) # Log traceback
+    finally:
+        # Close the database connection
+        if db_connection and db_connection.is_connected():
+            try:
+                cursor.close()
+                db_connection.close()
+                logging.info("Database connection closed.")
+            except mysql.connector.Error as close_err:
+                logging.error(f"Error closing database connection: {close_err}")
+        else:
+            logging.info("Database connection was not established or already closed.")
+
+if __name__ == "__main__":
+    main()
