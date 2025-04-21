@@ -5,7 +5,9 @@ import time
 import logging
 
 # --- Configuration ---
-CIK = "0001652044" # Google/Alphabet's CIK (ensure leading zeros)
+#CIK = "0001652044" # Google/Alphabet's CIK (ensure leading zeros)
+CIK = "0001855612" # GRAB
+
 API_URL = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{CIK}.json"
 OUTPUT_CSV_FILE = f"CIK{CIK}_facts.csv"
 
