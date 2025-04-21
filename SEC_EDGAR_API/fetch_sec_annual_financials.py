@@ -118,6 +118,7 @@ REQUEST_DELAY = 0.11
 # --- Logging Setup ---
 # Set default level to INFO. Change to DEBUG to see detailed logs.
 LOG_LEVEL = logging.INFO # Change to logging.DEBUG for detailed revenue logs
+#LOG_LEVEL = logging.DEBUG
 logging.basicConfig(
     level=LOG_LEVEL,
     format='%(asctime)s - %(levelname)s - [%(funcName)s] - %(message)s', # Added function name

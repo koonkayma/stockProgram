@@ -3,3 +3,10 @@ python3 ./fetch_sec_annual_financials.py --cik 1652044
 
 #no parameter for all companies
 python3 ./fetch_sec_annual_financials.py 
+
+
+API https://data.sec.gov/api/xbrl/companyfacts/CIK0001652044.json
+
+
+
+
