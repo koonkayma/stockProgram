@@ -1,4 +1,12 @@
 /*
+in sum, i want to make SQL to 
+- get latest 5 years data of a company
+- net_income_loss is positive in these 5 years
+- at lease 15 % growth in net_income_loss compare with 5 years ago. 5 years ago means 5 years before latest year in availabe data
+- at least 3 years in these 5 years's data with positive Free Cash Flow
+*/
+
+/*
 Explanation of the Combined Logic:
 CompanyMaxYear: Filters out companies that don't even have 5 years of data recorded in total. Then, identifies the most recent year (max_yr_for_cik) for each remaining company.
 
