@@ -1,0 +1,23 @@
+
+
+python3 -m venv myenv && source myenv/bin/activate && pip install edgartools edgar-py edgar.session mysql-connector-python pandas
+
+pip install --upgrade setuptools 
+pip install --upgrade pip
+pip install edgar-py edgar.session
+
+# for all companies
+python edgar_financial_importer.py
+
+#for 1 companies
+python edgar_financial_importer.py --cik 320193
+
+
+
+
+Deactivate (if active): deactivate
+Remove: rm -rf /home/kay/workspace/stockProgram/stockProgram/EDGAR_Tool/myenv
+Recreate: cd /home/kay/workspace/stockProgram/stockProgram/EDGAR_Tool/ && python3 -m venv myenv
+Activate: source myenv/bin/activate
+Reinstall: pip install edgartools mysql-connector-python pandas
+Run (using python): python ./edgar_financial_importer.py --cik 320193

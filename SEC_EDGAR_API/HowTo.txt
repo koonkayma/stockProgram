@@ -1,0 +1,2 @@
+python3 -m venv myenv && source myenv/bin/activate && pip install pandas
+python3 ./fetch_sec_annual_financials.py --cik 9389
